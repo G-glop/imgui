@@ -823,7 +823,8 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
             n0.y = temp;
         }
 
-        for (int i0 = points_count-1, i1 = 0; i1 < points_count; i0 = i1++) {
+        for (int i0 = points_count-1, i1 = 0; i1 < points_count; i0 = i1++)
+        {
             const ImVec2& current = points[i0];
             const ImVec2& next    = points[i1];
 
@@ -861,7 +862,8 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
             _IdxWritePtr += 6;
 
             // Maybe 1 triangle for fill
-            if (i1 >= 2) {
+            if (i1 >= 2) 
+            {
                 _IdxWritePtr[0] = common_idx; _IdxWritePtr[1] = (ImDrawIdx)(_VtxCurrentIdx-2); _IdxWritePtr[2] = (ImDrawIdx)(_VtxCurrentIdx);
                 _IdxWritePtr += 3;
             }
