@@ -816,15 +816,25 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
         const ImDrawIdx common_idx = (ImDrawIdx)_VtxCurrentIdx;
         ImVec2 n0 = points[0] - points[points_count - 1];
         n0 *= ImInvLength(n0, 1.0f);
-        n0 = ImVec2(n0.y, -n0.x);
+        {
+            //n0 = ImVec2(n0.y, -n0.x);
+            float temp = -n0.x;
+            n0.x = n0.y;
+            n0.y = temp;
+        }
 
         for (int i = 0; i < points_count; i++) {
             const ImVec2& current = points[i];
-            const ImVec2& next    = points[(i + 1) % points_count];
+            const ImVec2& next = points[(i + 1) % points_count];
 
             ImVec2 n1 = next - current;
             n1 *= ImInvLength(n1, 1.0f);
-            n1 = ImVec2(n1.y, -n1.x);
+            {
+                //n1 = ImVec2(n1.y, -n1.x);
+                float temp = -n1.x;
+                n1.x = n1.y;
+                n1.y = temp;
+            }
 
             ImVec2 dm = (n0 + n1) * 0.5f;
             float dmr2 = dm.x*dm.x + dm.y*dm.y;
