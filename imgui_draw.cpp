@@ -814,7 +814,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
         PrimReserve(idx_count, vtx_count);
 
         const ImDrawIdx common_idx = (ImDrawIdx)_VtxCurrentIdx;
-        ImVec2 n0 = points[0] - points[points_count - 1];
+        ImVec2 n0 = points[points_count - 1] - points[points_count - 2];
         n0 *= ImInvLength(n0, 1.0f);
         {
             //n0 = ImVec2(n0.y, -n0.x);
@@ -823,9 +823,9 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
             n0.y = temp;
         }
 
-        for (int i = 0; i < points_count; i++) {
-            const ImVec2& current = points[i];
-            const ImVec2& next = points[(i + 1) % points_count];
+        for (int i0 = points_count-1, i1 = 0; i1 < points_count; i0 = i1++) {
+            const ImVec2& current = points[i0];
+            const ImVec2& next    = points[i1];
 
             ImVec2 n1 = next - current;
             n1 *= ImInvLength(n1, 1.0f);
@@ -861,7 +861,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
             _IdxWritePtr += 6;
 
             // Maybe 1 triangle for fill
-            if (i >= 2) {
+            if (i1 >= 2) {
                 _IdxWritePtr[0] = common_idx; _IdxWritePtr[1] = (ImDrawIdx)(_VtxCurrentIdx-2); _IdxWritePtr[2] = (ImDrawIdx)(_VtxCurrentIdx);
                 _IdxWritePtr += 3;
             }
