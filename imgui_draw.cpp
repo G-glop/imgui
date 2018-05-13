@@ -860,9 +860,10 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
         }
 
         // Patch last indices to point to 1st iteration vertices
-        _IdxWritePtr[2-6] = common_idx;
-        _IdxWritePtr[4-6] = common_idx;
-        _IdxWritePtr[5-6] = common_idx + 1;
+        int offset = points_count < 3 ? 6 : 9; // If a fill triangle was emmited
+        _IdxWritePtr[2-offset] = common_idx;
+        _IdxWritePtr[4-offset] = common_idx;
+        _IdxWritePtr[5-offset] = common_idx + 1;
     }
     else
     {
