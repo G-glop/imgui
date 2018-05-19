@@ -807,8 +807,8 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
     if (Flags & ImDrawListFlags_AntiAliasedFill)
     {
         // Anti-aliased Fill
-        const float AA_SIZE = 1.0f;
-        const ImU32 col_trans = col & ~IM_COL32_A_MASK;
+        const float AA_SIZE = 3.0f;
+        const ImU32 col_trans = ImColor(244, 244, 66);// col & ~IM_COL32_A_MASK;
         const int idx_count = (points_count-2)*3 + points_count*6;
         const int vtx_count = (points_count*2);
         PrimReserve(idx_count, vtx_count);
@@ -861,21 +861,23 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
             _IdxWritePtr[3] = (ImDrawIdx)(_VtxCurrentIdx + 1); _IdxWritePtr[4] = (ImDrawIdx)(_VtxCurrentIdx + 2); _IdxWritePtr[5] = (ImDrawIdx)(_VtxCurrentIdx + 3);
             _IdxWritePtr += 6;
 
-            // Maybe 1 triangle for fill
-            if (i1 >= 2) 
-            {
-                _IdxWritePtr[0] = common_idx; _IdxWritePtr[1] = (ImDrawIdx)(_VtxCurrentIdx-2); _IdxWritePtr[2] = (ImDrawIdx)(_VtxCurrentIdx);
-                _IdxWritePtr += 3;
-            }
-
             _VtxCurrentIdx += 2;
         }
 
-        // Patch last indices to point to 1st iteration vertices
-        int offset = points_count < 3 ? 6 : 9; // If a fill triangle was emmited
-        _IdxWritePtr[2-offset] = common_idx;
-        _IdxWritePtr[4-offset] = common_idx;
-        _IdxWritePtr[5-offset] = common_idx + 1;
+        // Patch last border indices to point to 1st iteration vertices
+        _IdxWritePtr -= 6;
+        _IdxWritePtr[2] = common_idx;
+        _IdxWritePtr[4] = common_idx;
+        _IdxWritePtr[5] = common_idx + 1;
+        _IdxWritePtr += 6;
+
+        // Generate fill
+        //// Maybe 1 triangle for fill
+        //if (i1 >= 2)
+        //{
+        //    _IdxWritePtr[0] = common_idx; _IdxWritePtr[1] = (ImDrawIdx)(_VtxCurrentIdx - 2); _IdxWritePtr[2] = (ImDrawIdx)(_VtxCurrentIdx);
+        //    _IdxWritePtr += 3;
+        //}
     }
     else
     {
