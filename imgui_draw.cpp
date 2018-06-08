@@ -769,29 +769,54 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
     {
         // Non Anti-aliased Stroke
         const int idx_count = count*6;
-        const int vtx_count = count*4;      // FIXME-OPT: Not sharing edges
+        const int vtx_count = points_count*2;
         PrimReserve(idx_count, vtx_count);
 
-        for (int i1 = 0; i1 < count; i1++)
+        unsigned int vtx_inner_idx = _VtxCurrentIdx;
+        unsigned int vtx_outer_idx = _VtxCurrentIdx + 1;
+
+        // Add indices
+        for (int i0 = closed ? 0 : 1, i1 = closed ? points_count - 1 : 0; i0 < points_count; i1=i0++)
         {
-            const int i2 = (i1+1) == points_count ? 0 : i1+1;
-            const ImVec2& p1 = points[i1];
-            const ImVec2& p2 = points[i2];
-            ImVec2 diff = p2 - p1;
-            diff *= ImInvLength(diff, 1.0f);
-
-            const float dx = diff.x * (thickness * 0.5f);
-            const float dy = diff.y * (thickness * 0.5f);
-            _VtxWritePtr[0].pos.x = p1.x + dy; _VtxWritePtr[0].pos.y = p1.y - dx; _VtxWritePtr[0].uv = uv; _VtxWritePtr[0].col = col;
-            _VtxWritePtr[1].pos.x = p2.x + dy; _VtxWritePtr[1].pos.y = p2.y - dx; _VtxWritePtr[1].uv = uv; _VtxWritePtr[1].col = col;
-            _VtxWritePtr[2].pos.x = p2.x - dy; _VtxWritePtr[2].pos.y = p2.y + dx; _VtxWritePtr[2].uv = uv; _VtxWritePtr[2].col = col;
-            _VtxWritePtr[3].pos.x = p1.x - dy; _VtxWritePtr[3].pos.y = p1.y + dx; _VtxWritePtr[3].uv = uv; _VtxWritePtr[3].col = col;
-            _VtxWritePtr += 4;
-
-            _IdxWritePtr[0] = (ImDrawIdx)(_VtxCurrentIdx); _IdxWritePtr[1] = (ImDrawIdx)(_VtxCurrentIdx+1); _IdxWritePtr[2] = (ImDrawIdx)(_VtxCurrentIdx+2);
-            _IdxWritePtr[3] = (ImDrawIdx)(_VtxCurrentIdx); _IdxWritePtr[4] = (ImDrawIdx)(_VtxCurrentIdx+2); _IdxWritePtr[5] = (ImDrawIdx)(_VtxCurrentIdx+3);
+            _IdxWritePtr[0] = (ImDrawIdx)(vtx_inner_idx + (i1 << 1)); _IdxWritePtr[1] = (ImDrawIdx)(vtx_inner_idx + (i0 << 1)); _IdxWritePtr[2] = (ImDrawIdx)(vtx_outer_idx + (i0 << 1));
+            _IdxWritePtr[3] = (ImDrawIdx)(vtx_outer_idx + (i0 << 1)); _IdxWritePtr[4] = (ImDrawIdx)(vtx_outer_idx + (i1 << 1)); _IdxWritePtr[5] = (ImDrawIdx)(vtx_inner_idx + (i1 << 1));
             _IdxWritePtr += 6;
-            _VtxCurrentIdx += 4;
+        }
+        _VtxCurrentIdx += (ImDrawIdx)vtx_count;
+
+        // Compute normals
+        for (int i0 = 0; i0 < count; i0++) 
+        {
+            int i1 = (i0 + 1) == points_count ? 0 : i0 + 1;
+            ImVec2 diff = points[i1] - points[i0];
+            diff *= ImInvLength(diff, 1.0f);
+            _VtxWritePtr[i0 << 1].pos.x = diff.y;
+            _VtxWritePtr[i0 << 1].pos.y = -diff.x;
+        }
+
+        const ImVec2 n2 = _VtxWritePtr[closed ? (points_count - 1) << 1 : 0].pos;
+        ImVec2 n0 = n2;
+
+        // Add vertices
+        for (int i0 = 0; i0 < points_count; i0++)
+        {
+            const ImVec2& n1 = (i0 + 1 == points_count) ? (closed ? n2 : n0) : _VtxWritePtr[0].pos;
+
+            ImVec2 dm = (n0 + n1) * 0.5f;
+            n0 = n1;
+            float dmr2 = dm.x*dm.x + dm.y*dm.y;
+            if (dmr2 > 0.000001f)
+            {
+                float scale = 1.0f / dmr2;
+                if (scale > 100.0f) scale = 100.0f;
+                dm *= scale;
+            }
+            dm *= thickness * 0.5f;
+
+            // Add vertices
+            _VtxWritePtr[0].pos = (points[i0] - dm); _VtxWritePtr[0].uv = uv; _VtxWritePtr[0].col = col;
+            _VtxWritePtr[1].pos = (points[i0] + dm); _VtxWritePtr[1].uv = uv; _VtxWritePtr[1].col = col;
+            _VtxWritePtr += 2;
         }
     }
 }
