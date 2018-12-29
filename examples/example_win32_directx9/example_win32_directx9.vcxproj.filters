@@ -13,15 +13,6 @@
     <ClCompile Include="main.cpp">
       <Filter>sources</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\imgui.cpp">
-      <Filter>imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\imgui_demo.cpp">
-      <Filter>imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\imgui_draw.cpp">
-      <Filter>imgui</Filter>
-    </ClCompile>
     <ClCompile Include="..\imgui_impl_win32.cpp">
       <Filter>sources</Filter>
     </ClCompile>
@@ -31,8 +22,23 @@
     <ClCompile Include="..\..\imgui_widgets.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\imgui.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui_demo.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui_draw.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\imgui_impl_win32.h">
+      <Filter>sources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\imgui_impl_dx9.h">
+      <Filter>sources</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\imconfig.h">
       <Filter>imgui</Filter>
     </ClInclude>
@@ -41,12 +47,6 @@
     </ClInclude>
     <ClInclude Include="..\..\imgui_internal.h">
       <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\imgui_impl_win32.h">
-      <Filter>sources</Filter>
-    </ClInclude>
-    <ClInclude Include="..\imgui_impl_dx9.h">
-      <Filter>sources</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

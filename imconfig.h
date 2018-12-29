@@ -71,3 +71,9 @@ namespace ImGui
     void MyFunction(const char* name, const MyMatrix44& v);
 }
 */
+
+#define INITIAL
+//#define VTX_REUSE_TYPESAFE
+//#define VTX_REUSE
+//#define IDX_REUSE
+//#define JOINED
