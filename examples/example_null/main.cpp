@@ -43,7 +43,10 @@ void fout(const char* frmt, ...) {
 	vstrprintf(str, frmt, args);
 	va_end(args);
 	OutputDebugStringA((LPCSTR)str.c_str());
+	printf("%s", str.c_str());
 }
+
+int convexpoly_impl_num = 0;
 
 int main(int, char**)
 {
@@ -57,31 +60,71 @@ int main(int, char**)
     io.Fonts->GetTexDataAsRGBA32(&tex_pixels, &tex_w, &tex_h);
 
 	fout("benchmark start\n");
+
+	struct Test {
+		int num;
+		const char *name;
+	};
+
+	Test tests[] = {
+		0, "warmup",
+		0, "initial",
+		5, "initial inline",
+		4, "joined",
+		1, "vtx reuse safe",
+		3, "idx reuse",
+		2, "vtx reuse",
+		0, "initial sanity",
+	};
 	
-	double start = seconds();
-	double end = seconds();
-	int iter = 0;
-	size_t per_iter = 10000;
-#ifndef _DEBUG 
-	per_iter *= 10;
-#endif
-	while (end - start < 10){
-		iter++;
-		fout("round #%d\n", iter);
-		for (size_t n = 0; n < per_iter; n++)
-		{
+	for (Test t : tests) {
+		convexpoly_impl_num = t.num;
+		fout("#%d ", t.num);
+
+		//warmup
+		for (int i = 0; i < 10; i++) {
 			io.DisplaySize = ImVec2(1920, 1080);
 			io.DeltaTime = 1.0f / 60.0f;
 			ImGui::NewFrame();
 
 			ImGui::ShowDemoWindow(NULL);
+			ImGui::ShowDemoWindow(NULL);
+			ImGui::ShowDemoWindow(NULL);
 
 			ImGui::Render();
 		}
-		end = seconds();
-	};
-    fout("benchmark end\n");
-	fout("time: %f us\n", (end - start)/iter/per_iter*1e6);
+
+		double start = seconds();
+		double end = seconds();
+		int iter = 0;
+
+		// adjust these two so timing functions aren't called too often
+#ifndef _DEBUG 
+		size_t per_iter = 30000;
+#else
+		size_t per_iter = 3000;
+#endif
+
+		while (end - start < 5) {
+			iter++;
+			fout(".", iter);
+			for (size_t n = 0; n < per_iter; n++)
+			{
+				io.DisplaySize = ImVec2(1920, 1080);
+				io.DeltaTime = 1.0f / 60.0f;
+				ImGui::NewFrame();
+
+				ImGui::ShowDemoWindow(NULL);
+				ImGui::ShowDemoWindow(NULL);
+				ImGui::ShowDemoWindow(NULL);
+
+				ImGui::Render();
+			}
+			end = seconds();
+		};
+		assert(convexpoly_impl_num >= 0);
+		fout("\n%-18s%f us\n", t.name, (end - start) / iter / per_iter * 1e6);
+	}
 
     ImGui::DestroyContext();
     return 0;
