@@ -8,7 +8,14 @@
 #include <chrono>
 #include <string>
 
-#pragma warning(disable: 4996)
+// Program to test performace of imgui
+// runs tests from an array specifing an implementation (as a parameter to switch statement) and a name
+// results are printed both to stdout and OutputDebugString for conviniece
+// output can be visualized using https://repl.it/@G_glop/ViolentMellowNanocad
+
+// NOTICE: ImDrawList::AddPolyline and ImFont::RenderText are stubbed out
+
+#pragma warning(disable: 4996) // MSVC begin MSVC
 
 double seconds() {
 	return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -59,7 +66,16 @@ int main(int, char**)
     int tex_w, tex_h;
     io.Fonts->GetTexDataAsRGBA32(&tex_pixels, &tex_w, &tex_h);
 
-	fout("benchmark start\n");
+#ifndef _WIN64
+    fout("32 ");
+#else
+    fout("64 ");
+#endif
+#ifdef _DEBUG
+    fout("debug\n");
+#else
+    fout("release\n");
+#endif
 
 	struct Test {
 		int num;
@@ -98,7 +114,7 @@ int main(int, char**)
 		double end = seconds();
 		int iter = 0;
 
-		// adjust these two so timing functions aren't called too often
+		// adjust these parameters so timing functions aren't called too often (indicated by dots in the output)
 #ifndef _DEBUG 
 		size_t per_iter = 30000;
 #else
