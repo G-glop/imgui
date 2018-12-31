@@ -925,7 +925,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
     }
     break;
 
-    case 1: // Idx reuse typesafe
+    case 1: // Vtx reuse typesafe
     {
         const ImVec2 uv = _Data->TexUvWhitePixel;
 
@@ -1012,7 +1012,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
     }
     break;
 
-    case 2: // Idx reuse
+    case 2: // Vtx reuse
     {
         const ImVec2 uv = _Data->TexUvWhitePixel;
 
@@ -1099,7 +1099,7 @@ void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_coun
     }
     break;
 
-    case 3: // Vtx reuse
+    case 3: // Idx reuse
     {
         if (points_count < 3)
             return;
