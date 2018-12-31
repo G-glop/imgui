@@ -836,7 +836,7 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
     }
 }
 
-extern int convexpoly_impl_num;
+int convexpoly_impl_num = 2;
 void ImDrawList::AddConvexPolyFilled(const ImVec2* points, const int points_count, ImU32 col)
 {
     switch (convexpoly_impl_num) {

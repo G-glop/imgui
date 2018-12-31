@@ -53,7 +53,7 @@ void fout(const char* frmt, ...) {
 	printf("%s", str.c_str());
 }
 
-int convexpoly_impl_num = 0;
+extern int convexpoly_impl_num;
 
 int main(int, char**)
 {
