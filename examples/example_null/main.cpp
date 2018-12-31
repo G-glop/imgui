@@ -49,7 +49,7 @@ void fout(const char* frmt, ...) {
 	va_start(args, frmt);
 	vstrprintf(str, frmt, args);
 	va_end(args);
-	OutputDebugStringA((LPCSTR)str.c_str());
+	//OutputDebugStringA((LPCSTR)str.c_str());
 	printf("%s", str.c_str());
 }
 

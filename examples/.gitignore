@@ -2,6 +2,7 @@ build/*
 */Debug/*
 */Release/*
 */x64/*
+*/bin/*
 *.o
 *.obj
 *.exe
