@@ -1,0 +1,40 @@
+Dear ImGui light remote:
+    auto generated (de)serialization code from function declarations
+    -format: {function id, constant size paramters, variable size paramters (eg. string, ImVec2 array)}
+     -easy to reserve space in a buffer
+     -need to send an object id as an additional paramter
+    -own parser because the grammar is really simple
+
+Server:
+    Graphical output sent as ImDrawList calls
+    -ImDrawList then contains just an id
+        -don't send the id for each call, instead create a function switch_draw_list(id)
+    -no way to implement AddCallback function
+    Need a way to send fonts and images to the client
+    ImFontGlyph still needs to have AdvanceX for CalcTextSize
+    -but can drop all the coordinates, ie. 38 -> 6 bytes per character
+    -extracted into ImFont::IndexAdvanceX and ImFont::IndexLookup
+     both are sparse
+    -maybe do font handling only on the client and only ship back these two arrays
+     use URLs instead of storing the font file?
+    Sends a message to indicate end of frame and the order in which ImDrawLists should be rendered
+    Recieves input messages and aggregates them for use in the next frame
+Client:
+    Runs ImDrawList functions with received paramters
+    Renders on the reception of end-frame message
+    Sends input messages
+    Builds up font data along/for the server
+    
+todo:
+decide if it's better to use clang or continue this way
+
+finish basic tokenizer
+basic parser
+improve tokenizer and parser to supportt c++ attributes
+serialization code generator
+improve tokenizer and parser to chow down entire imgui source files
+-preprocessor directives
+-variable defenitions
+-skipping string literals (even in curly blocks)
+-don't dread on it, hard to skip parts can be ifdefed out
+improve code generator to insert generated code into source files with preprocessor ifs
