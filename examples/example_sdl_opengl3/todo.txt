@@ -1,0 +1,10 @@
+currently:
+    simple 2D CPU side tracer
+
+next steps:
+  3D
+  GPU side
+  or different tracing methods
+    +trace only boundary rays (ie. 2 in 2D, 4 in 3D) until they diverege my more than one voxel, then create a ray in the middle (if not already at pixel angular density) and recurse twice
+    +start with one boundary ray already traced out. Then imagine an angular sweep to the other boundary, now visit the voxels in the order as the sweep would. Opaque voxels bump the sweep over them (occluding what's behind them)
+

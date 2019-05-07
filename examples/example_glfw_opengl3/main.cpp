@@ -30,17 +30,18 @@
 #pragma comment(lib, "legacy_stdio_definitions")
 #endif
 
+GLFWwindow* glfw_window;
+
 static void glfw_error_callback(int error, const char* description)
 {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
-int main(int, char**)
-{
+bool init_window() {
     // Setup window
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
-        return 1;
+        return false;
 
     // Decide GL+GLSL versions
 #if __APPLE__
@@ -60,10 +61,10 @@ int main(int, char**)
 #endif
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", NULL, NULL);
-    if (window == NULL)
-        return 1;
-    glfwMakeContextCurrent(window);
+    glfw_window = glfwCreateWindow(1280, 720, "Voxel tracing prototype", NULL, NULL);
+    if (glfw_window == NULL)
+        return false;
+    glfwMakeContextCurrent(glfw_window);
     glfwSwapInterval(1); // Enable vsync
 
     // Initialize OpenGL loader
@@ -79,7 +80,7 @@ int main(int, char**)
     if (err)
     {
         fprintf(stderr, "Failed to initialize OpenGL loader!\n");
-        return 1;
+        return false;
     }
 
     // Setup Dear ImGui context
@@ -89,106 +90,169 @@ int main(int, char**)
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
 
+    ImFontConfig cfg;
+    cfg.SizePixels = 15;
+    io.Fonts->AddFontDefault(&cfg);
+
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
     //ImGui::StyleColorsClassic();
 
     // Setup Platform/Renderer bindings
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplGlfw_InitForOpenGL(glfw_window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
+    return true;
+}
 
-    // Load Fonts
-    // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
-    // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
-    // - If the file cannot be loaded, the function will return NULL. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
-    // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
-    // - Read 'misc/fonts/README.txt' for more instructions and details.
-    // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
-    //io.Fonts->AddFontDefault();
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
-    //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
-    //IM_ASSERT(font != NULL);
+bool start_frame() {
+    if (glfwWindowShouldClose(glfw_window))
+        return false;
 
-    bool show_demo_window = true;
-    bool show_another_window = false;
+    glfwPollEvents();
+
+    // Start the Dear ImGui frame
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+    return true;
+}
+
+void render() {
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
-    // Main loop
-    while (!glfwWindowShouldClose(window))
-    {
-        // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
-        // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
-        glfwPollEvents();
+    // Rendering
+    ImGui::Render();
+    int display_w, display_h;
+    glfwMakeContextCurrent(glfw_window);
+    glfwGetFramebufferSize(glfw_window, &display_w, &display_h);
+    glViewport(0, 0, display_w, display_h);
+    glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+    glfwMakeContextCurrent(glfw_window);
+    glfwSwapBuffers(glfw_window);
+}
 
-        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-        if (show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
-
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
-        {
-            static float f = 0.0f;
-            static int counter = 0;
-
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-            ImGui::Checkbox("Another Window", &show_another_window);
-
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            ImGui::End();
-        }
-
-        // 3. Show another simple window.
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-            ImGui::Text("Hello from another window!");
-            if (ImGui::Button("Close Me"))
-                show_another_window = false;
-            ImGui::End();
-        }
-
-        // Rendering
-        ImGui::Render();
-        int display_w, display_h;
-        glfwMakeContextCurrent(window);
-        glfwGetFramebufferSize(window, &display_w, &display_h);
-        glViewport(0, 0, display_w, display_h);
-        glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        glfwMakeContextCurrent(window);
-        glfwSwapBuffers(window);
-    }
-
+void shutdown() {
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    glfwDestroyWindow(window);
+    glfwDestroyWindow(glfw_window);
     glfwTerminate();
+}
+
+// User code:
+
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include <imgui_internal.h>
+
+const int size = 256;
+int resolution = 1280;
+float fov = 3.14 / 2;
+bool arr[size][size] = { false };
+float view_scale = 0;
+int visited = 0;
+int visited_unique = 0;
+
+ImColor col_empty(102, 109, 122);
+ImColor col_visited(119, 179, 216);
+
+void draw_square(ImVec2 coords, ImU32 col) {
+    auto& drw = *ImGui::GetWindowDrawList();
+    coords = ImVec2((int)coords.x, (int)coords.y);
+    drw.AddRectFilled(coords * view_scale, ImVec2{ coords.x + 1, coords.y + 1 } *view_scale, col);
+}
+
+void walk_ray(ImVec2 start, ImVec2 dir) {
+    ImVec2 step(dir.x > 0 ? 1 : -1, dir.y > 0 ? 1 : -1);
+    ImVec2 cur((int)start.x, (int)start.y);
+    ImVec2 tMax = (cur + step - start) / dir;
+    ImVec2 tDelta = ImVec2{ 1 / dir.x, 1 / dir.y } *step;
+
+    while ((cur.x >= 0 && cur.x < size) && (cur.y >= 0 && cur.y < size)) {
+        visited++;
+        bool& voxel = arr[(int)cur.x][(int)cur.y];
+        if (!voxel)
+            visited_unique += 1;
+        voxel = true;
+        if (tMax.x < tMax.y) {
+            tMax.x += tDelta.x;
+            cur.x += step.x;
+        }
+        else {
+            tMax.y += tDelta.y;
+            cur.y += step.y;
+        }
+    }
+}
+
+int main(int, char**) {
+    if (!init_window()) {
+        printf("error creating window\n");
+        return -1;
+    }
+
+    while (start_frame()) {
+        auto& io = ImGui::GetIO();
+
+        ImGui::SetNextWindowPos({ 0, 0 });
+        ImGui::SetNextWindowSize(io.DisplaySize);
+
+        ImGui::Begin("###fullscreen", NULL,
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoTitleBar |
+            ImGuiWindowFlags_NoBringToFrontOnFocus
+        );
+
+        // Reset state
+        memset(arr, false, sizeof(arr));
+        visited = 0;
+        visited_unique = 0;
+
+        // Update view paramters
+        view_scale = ImMin(io.DisplaySize.x, io.DisplaySize.y) / size;
+        ImVec2 view_pos = io.MousePos / view_scale;
+        static float view_angle = 0;
+        view_angle += io.MouseWheel * 3.14 / 16;
+        ImVec2 view_dir = ImRotate({ 1, 0 }, ImCos(view_angle), ImSin(view_angle));
+
+        ImVec2 a = ImRotate(view_dir, ImCos(fov / 2), ImSin(fov / 2));
+        ImVec2 b = ImRotate(view_dir, ImCos(-fov / 2), ImSin(-fov / 2));
+
+        for (int i = 0; i < resolution; i++) {
+            float angle = (i / (float)resolution - 0.5) * fov;
+            walk_ray(view_pos, ImRotate(view_dir, ImCos(angle), ImSin(angle)));
+        }
+
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                draw_square(ImVec2(x, y), arr[x][y] ? col_visited : col_empty);
+            }
+        }
+
+        ImGui::Begin("Stats", NULL, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Text("View pos: {%f, %f}\n", view_pos.x, view_pos.y);
+        ImGui::Text("View angle: %f {%f, %f}\n", view_angle, view_dir.x, view_dir.y);
+        float size = 30;
+        ImVec2 origin = ImGui::GetCursorScreenPos() + ImVec2{ size, size };
+        ImGui::Dummy({ size * 2, size * 2 });
+        auto& drw = *ImGui::GetWindowDrawList();
+        drw.AddCircle(origin, size, col_empty, 30);
+        drw.AddLine(origin, origin + view_dir * size, col_visited, 4);
+        ImGui::Text("Visisted: %d\nUnique: %d (%.1f%%)", visited, visited_unique, visited_unique / (float)visited * 100);
+        ImGui::InputFloat("FOV", &fov, 0.1);
+        ImGui::InputInt("Resolution", &resolution);
+        ImGui::End();
+
+        ImGui::End();
+        render();
+    }
+
+    shutdown();
 
     return 0;
 }
