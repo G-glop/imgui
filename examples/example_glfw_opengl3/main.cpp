@@ -41,6 +41,8 @@
 #define STB_RECT_PACK_IMPLEMENTATION
 #include "imstb_rectpack.h"
 
+#include "json11.hpp"
+
 #undef min
 #undef max
 #undef INFINITE
@@ -48,7 +50,11 @@
 #include "../msdfgen/msdfgen.h"
 #include "../msdfgen/msdfgen-ext.h"
 #include "../msdfgen/core/estimate-sdf-error.h"
+#ifdef _DEBUG
 #pragma comment(lib, "../../examples/Debug Library/msdfgen.lib")
+#else
+#pragma comment(lib, "../../examples/bin/msdfgen.lib")
+#endif
 #pragma comment(lib, "../../msdfgen/freetype/win32/freetype.lib")
 
 #define ALIGN_DOWN(n, a) ((n) & ~((a) - 1))
@@ -247,16 +253,39 @@ int main(int, char**) {
     namespace df = msdfgen;
 
     struct Shape {
+        std::string ascii_char;
         df::Shape shape; ImVec2 off, size;
+        float scale;
+        df::Bitmap<float, 3> msdf;
     };
     std::vector<Shape> shapes;
+    int current_shape = 0;
+
+    json11::Json persistent_scale;// = json11::Json::parse("[]", std::string());
 
     {
+        FILE* file = fopen("glyph_scale.json", "r");
+        if (file) {
+            struct stat info = { 0 };
+            stat("glyph_scale.json", &info);
+            std::string data;
+            data.resize(info.st_size);
+            fread(&data[0], 1, data.size(), file);
+            fclose(file);
+            std::string err;
+            persistent_scale = json11::Json::parse(data, err);
+            if (err.size())
+                printf("json parse error: %s\n", err.c_str());
+        }
+        else {
+            printf("file open error\n");
+        }
+
         auto* freetype = df::initializeFreetype();
         auto* font = df::loadFont(freetype, "../../misc/fonts/Cousine-Regular.ttf");
 
-        //for (int i = 33; i < 127; i++) {
-        for (int i = 'A'; i < 'A' + 1; i++) {
+        for (int i = 33; i < 127; i++) {
+            //for (int i = 'A'; i < 'A' + 1; i++) {
             df::Shape shape;
             if (df::loadGlyph(shape, font, i)) {
                 shape.inverseYAxis = true;
@@ -265,80 +294,91 @@ int main(int, char**) {
 
                 double l = DBL_MAX, b = DBL_MAX, r = -DBL_MAX, t = -DBL_MAX;
                 shape.bounds(l, b, r, t);
-                ImVec2 off((float)l, (float)b);
-                ImVec2 size = ImVec2((float)r, (float)t) - off;
                 printf("character: %c, %f %f %f %f\n", i, l, b, r, t);
-                shapes.push_back({ shape, off, size });
+
+                Shape s;
+
+                s.shape = shape;
+                s.off = { (float)l, (float)b };
+                s.size = { (float)r, (float)t };
+                s.size -= s.off;
+                s.ascii_char = i;
+                s.scale = persistent_scale[s.ascii_char].number_value();
+                if (s.scale == 0)
+                    s.scale = 1;
+                shapes.push_back(s);
             }
         }
-        //df::destroyFont(font);
-        //df::deinitializeFreetype(freetype);
+        df::destroyFont(font);
+        df::deinitializeFreetype(freetype);
     }
 
-    float scale = 1;
-    int padding = 2;
-    int wh;
+    //float scale = 1;
+    //int padding = 2;
+    //int wh;
+    //auto run_packing = [&]() {
+    //    // Pack glyph areas into an atlas
+    //    ImVector<stbrp_rect> rects;
+    //    {
+    //        rects.resize(shapes.size());
+    //        int area = 0;
+    //        for (size_t i = 0; i < shapes.size(); i++) {
+    //            ImVec2 size = shapes[i].size;
+    //            stbrp_rect& r = rects[i];
+    //            r.w = (stbrp_coord)ceil(size.x * scale + padding * 2);
+    //            r.h = (stbrp_coord)ceil(size.y * scale + padding * 2);
+    //            area += r.w * r.h;
+    //        }
+    //        wh = (int)ceil(sqrt(area * 1.5));
+    //        //wh = (int)ceil(sqrt(area * 2));
+    //        ImVector<stbrp_node> nodes;
+    //        nodes.resize(wh * 2);
+    //        stbrp_context cont = { 0 };
+    //        stbrp_init_target(&cont, wh, wh, nodes.begin(), nodes.size());
+    //        stbrp_pack_rects(&cont, rects.begin(), rects.size());
+    //    }
+    //    // Render them
+    //    {
+    //        df::Bitmap<ImU8, 3> image(ALIGN_UP(wh, 4), wh);
+    //        auto conv = [](float x) {
+    //            return (ImU8)fminf(fmaxf(x*256.0f, 0.0f), 255.0f);
+    //        };
+    //        for (size_t i = 0; i < shapes.size(); i++) {
+    //            Shape& s = shapes[i];
+    //            stbrp_rect r = rects[i];
+    //            if (!r.was_packed)
+    //                continue;
+    //            df::Bitmap<float, 3> msdf(r.w, r.h);
+    //            ImVec2 glyph_center = s.size / 2 + s.off;
+    //            ImVec2 image_center = ImVec2(r.w, r.h) / 2;
+    //            ImVec2 tr = image_center / scale - glyph_center;
+    //            df::generateMSDF(msdf, s.shape, 2, scale, { tr.x, tr.y });
+    //            for (int y = 0; y < msdf.height(); y++) {
+    //                for (int x = 0; x < msdf.width(); x++) {
+    //                    float *a = msdf(x, y);
+    //                    ImU8 *b = image(r.x + x, r.y + y);
+    //                    b[0] = conv(a[0]);
+    //                    b[1] = conv(a[1]);
+    //                    b[2] = conv(a[2]);
+    //                }
+    //            }
+    //        }
+    //        glBindTexture(GL_TEXTURE_2D, msdf_texture);
+    //        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, image.width(), image.height(), 0, GL_RGB, GL_UNSIGNED_BYTE, (ImU8*)image);
+    //    }
+    //};
+    //run_packing();
 
-    auto run_packing = [&]() {
-        // Pack glyph areas into an atlas
-        ImVector<stbrp_rect> rects;
-        {
-            rects.resize(shapes.size());
-            int area = 0;
-            for (size_t i = 0; i < shapes.size(); i++) {
-                ImVec2 size = shapes[i].size;
-                stbrp_rect& r = rects[i];
-                r.w = (stbrp_coord)ceil(size.x * scale + padding * 2);
-                r.h = (stbrp_coord)ceil(size.y * scale + padding * 2);
-                area += r.w * r.h;
-            }
-            wh = (int)ceil(sqrt(area * 1.5));
-            //wh = (int)ceil(sqrt(area * 2));
-
-            ImVector<stbrp_node> nodes;
-
-            nodes.resize(wh * 2);
-            stbrp_context cont = { 0 };
-            stbrp_init_target(&cont, wh, wh, nodes.begin(), nodes.size());
-            stbrp_pack_rects(&cont, rects.begin(), rects.size());
-        }
-
-        // Render them
-        {
-            df::Bitmap<ImU8, 3> image(ALIGN_UP(wh, 4), wh);
-            auto conv = [](float x) {
-                return (ImU8)fminf(fmaxf(x*256.0f, 0.0f), 255.0f);
-            };
-
-            for (size_t i = 0; i < shapes.size(); i++) {
-                Shape& s = shapes[i];
-                stbrp_rect r = rects[i];
-                if (!r.was_packed)
-                    continue;
-                df::Bitmap<float, 3> msdf(r.w, r.h);
-
-                ImVec2 glyph_center = s.size / 2 + s.off;
-                ImVec2 image_center = ImVec2(r.w, r.h) / 2;
-                ImVec2 tr = image_center / scale - glyph_center;
-
-                df::generateMSDF(msdf, s.shape, 2, scale, { tr.x, tr.y });
-                for (int y = 0; y < msdf.height(); y++) {
-                    for (int x = 0; x < msdf.width(); x++) {
-                        float *a = msdf(x, y);
-                        ImU8 *b = image(r.x + x, r.y + y);
-                        b[0] = conv(a[0]);
-                        b[1] = conv(a[1]);
-                        b[2] = conv(a[2]);
-                    }
-                }
-            }
-
-            glBindTexture(GL_TEXTURE_2D, msdf_texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, image.width(), image.height(), 0, GL_RGB, GL_UNSIGNED_BYTE, (ImU8*)image);
-        }
+    auto generate_msdf = [](Shape& s) {
+        int padding = 2;
+        s.msdf = std::move(df::Bitmap<float, 3>(
+            (int)ceil(s.size.x * s.scale + padding * 2),
+            (int)ceil(s.size.y * s.scale + padding * 2)));
+        ImVec2 glyph_center = s.size / 2 + s.off;
+        ImVec2 image_center = ImVec2(s.msdf.width(), s.msdf.height()) / 2;
+        ImVec2 tr = image_center / s.scale - glyph_center;
+        df::generateMSDF(s.msdf, s.shape, 2, s.scale, { tr.x, tr.y });
     };
-
-    run_packing();
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {
@@ -351,36 +391,36 @@ int main(int, char**) {
 
         /* TODO:
         minimize SDF size for each glyph
+        -manually - tedius
         -automatically - would need a better way to evaluate accuracy than the scanline API
-        -manually - only ~100 glyphs for ASCII, persistent storeage
-        parallelize + async
-        -or persistently cache the SDF
         */
 
         ImGui::Begin("MSDF test");
 
-        //double min = 1e-3;
-        //if (ImGui::DragFloat("PX range", &pxrange, 0.1f, 1, 100)) {
-        //    run_packing();
-        //}
-        //if (ImGui::DragScalar("Scale", ImGuiDataType_Double, &scale.x, 0.01f, &min)) {
-        //    scale.y = scale.x;
-        //    run_packing();
-        //}
-        //if (ImGui::DragScalarN("Translate", ImGuiDataType_Double, &trans.x, 2, 0.1f)) {
-        //    run_packing();
-        //}
+        Shape& s = shapes[current_shape];
+
+        ImGui::Text("%s (%d/%d)", s.ascii_char.c_str(), current_shape + 1, shapes.size());
+        if (ImGui::Button("<<") && current_shape > 0)
+            current_shape -= 1;
+        ImGui::SameLine();
+        if (ImGui::Button(">>") && current_shape + 1 < shapes.size())
+            current_shape += 1;
+
+        if (ImGui::DragFloat("Scale:", &s.scale, 0.01f, 0.1f, 10.0f)) {
+            generate_msdf(s);
+        }
+
+        if (s.msdf.width() == 0)
+            generate_msdf(s);
+
+        glBindTexture(GL_TEXTURE_2D, msdf_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, s.msdf.width(), s.msdf.height(), 0, GL_RGB, GL_FLOAT, (float*)s.msdf);
 
         static bool show_raw = false;
         ImGui::Checkbox("Show raw MSDF", &show_raw);
 
-        if (ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 10))
-            run_packing();
-        //if (ImGui::DragInt("Padding", &padding, 0.1f, 1, 100))
-        //    run_packing();
-
         static float px_range = 2;
-        ImGui::SliderFloat("Shader PX range", &px_range, 0.01f, 10.0f);
+        //ImGui::SliderFloat("Shader PX range", &px_range, 0.01f, 10.0f);
 
         int w, h;
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
@@ -426,6 +466,18 @@ int main(int, char**) {
 
         glfwMakeContextCurrent(window);
         glfwSwapBuffers(window);
+    }
+
+    {
+        std::map<std::string, json11::Json> state;
+        for (Shape& s : shapes) {
+            auto& j = persistent_scale[s.ascii_char];
+            state[s.ascii_char] = j.is_string() ? j : json11::Json(s.scale);
+        }
+        FILE* file = fopen("glyph_scale.json", "w");
+        std::string data = json11::Json(state).dump();
+        fwrite(&data[0], 1, data.size(), file);
+        fclose(file);
     }
 
     // Cleanup

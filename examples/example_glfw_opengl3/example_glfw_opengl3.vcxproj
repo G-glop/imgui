@@ -172,6 +172,7 @@
     <ClCompile Include="..\imgui_impl_glfw.cpp" />
     <ClCompile Include="..\imgui_impl_opengl3.cpp" />
     <ClCompile Include="..\libs\gl3w\GL\gl3w.c" />
+    <ClCompile Include="json11.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -182,6 +183,7 @@
     <ClInclude Include="..\imgui_impl_opengl3.h" />
     <ClInclude Include="..\libs\gl3w\GL\gl3w.h" />
     <ClInclude Include="..\libs\gl3w\GL\glcorearb.h" />
+    <ClInclude Include="json11.hpp" />
     <ClInclude Include="stb_image.h" />
   </ItemGroup>
   <ItemGroup>

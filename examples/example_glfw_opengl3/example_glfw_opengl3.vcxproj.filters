@@ -37,6 +37,9 @@
     <ClCompile Include="..\..\imgui_widgets.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
+    <ClCompile Include="json11.cpp">
+      <Filter>sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\imconfig.h">
@@ -61,6 +64,7 @@
       <Filter>sources</Filter>
     </ClInclude>
     <ClInclude Include="stb_image.h" />
+    <ClInclude Include="json11.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.txt" />
