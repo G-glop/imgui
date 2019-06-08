@@ -30,13 +30,70 @@
 #pragma comment(lib, "legacy_stdio_definitions")
 #endif
 
-static void glfw_error_callback(int error, const char* description)
-{
+#include <vector>
+
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include "imgui_internal.h"
+
+//#define STB_IMAGE_IMPLEMENTATION
+//#include "stb_image.h"
+
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "imstb_rectpack.h"
+
+#undef min
+#undef max
+#undef INFINITE
+
+#include "../msdfgen/msdfgen.h"
+#include "../msdfgen/msdfgen-ext.h"
+#include "../msdfgen/core/estimate-sdf-error.h"
+#pragma comment(lib, "../../examples/Debug Library/msdfgen.lib")
+#pragma comment(lib, "../../msdfgen/freetype/win32/freetype.lib")
+
+#define ALIGN_DOWN(n, a) ((n) & ~((a) - 1))
+#define ALIGN_UP(n, a) ALIGN_DOWN((n) + (a) - 1, (a))
+
+static void glfw_error_callback(int error, const char* description) {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
-int main(int, char**)
+static bool check_shader(GLuint handle, const char* desc)
 {
+    GLint status = 0, log_length = 0;
+    glGetShaderiv(handle, GL_COMPILE_STATUS, &status);
+    glGetShaderiv(handle, GL_INFO_LOG_LENGTH, &log_length);
+    if ((GLboolean)status == GL_FALSE)
+        fprintf(stderr, "ERROR: failed to compile %s!\n", desc);
+    if (log_length > 1)
+    {
+        ImVector<char> buf;
+        buf.resize((int)(log_length + 1));
+        glGetShaderInfoLog(handle, log_length, NULL, (GLchar*)buf.begin());
+        fprintf(stderr, "%s\n", buf.begin());
+    }
+    return (GLboolean)status == GL_TRUE;
+}
+
+// If you get an error please report on GitHub. You may try different GL context version or GLSL version.
+static bool check_program(GLuint handle, const char* desc)
+{
+    GLint status = 0, log_length = 0;
+    glGetProgramiv(handle, GL_LINK_STATUS, &status);
+    glGetProgramiv(handle, GL_INFO_LOG_LENGTH, &log_length);
+    if ((GLboolean)status == GL_FALSE)
+        fprintf(stderr, "ERROR: failed to link %s!\n", desc);
+    if (log_length > 1)
+    {
+        ImVector<char> buf;
+        buf.resize((int)(log_length + 1));
+        glGetProgramInfoLog(handle, log_length, NULL, (GLchar*)buf.begin());
+        fprintf(stderr, "%s\n", buf.begin());
+    }
+    return (GLboolean)status == GL_TRUE;
+}
+
+int main(int, char**) {
     // Setup window
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -86,7 +143,7 @@ int main(int, char**)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
 
     // Setup Dear ImGui style
@@ -112,70 +169,259 @@ int main(int, char**)
     //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
     //IM_ASSERT(font != NULL);
 
-    bool show_demo_window = true;
-    bool show_another_window = false;
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+    //int x, y;
+    //void* image = stbi_load("../../output.png", &x, &y, NULL, 3);
+    //GLuint msdf_texture;
+    //glGenTextures(1, &msdf_texture);
+    //glBindTexture(GL_TEXTURE_2D, msdf_texture);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    //glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, x, y, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+
+    const GLchar* msdf_vs_source = R"END(
+    #version 130
+    uniform mat4 ProjMtx;
+    in vec2 Position;
+    in vec2 UV;
+    in vec4 Color;
+    out vec2 Frag_UV;
+    out vec4 Frag_Color;
+    void main(){
+        Frag_UV = UV;
+        Frag_Color = Color;
+        gl_Position = ProjMtx * vec4(Position.xy,0,1);
+    };
+)END";
+
+    const GLchar* msdf_fs_source = R"END(
+    #version 130
+    uniform sampler2D Texture;
+    uniform float pxRange;
+
+    in vec2 Frag_UV;
+    in vec4 Frag_Color;
+    out vec4 Out_Color;
+
+    float median(float r, float g, float b) {
+        return max(min(r, g), min(max(r, g), b));
+    }
+
+    void main(){
+
+        vec3 sample = texture(Texture, Frag_UV).rgb;
+        float sigDist = median(sample.r, sample.g, sample.b) - 0.5;
+        vec2 msdfUnit = pxRange/vec2(textureSize(Texture, 0));
+        sigDist *= dot(msdfUnit, 0.5/fwidth(Frag_UV));
+        float opacity = clamp(sigDist + 0.5, 0.0, 1.0);
+        Out_Color = Frag_Color * opacity;
+
+        //Out_Color = Frag_Color * texture(Texture, Frag_UV.st);
+    };
+)END";
+
+    GLuint vs, fs, msdf_shader;
+    vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &msdf_vs_source, 0);
+    glCompileShader(vs);
+    check_shader(vs, "vertex shader");
+
+    fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &msdf_fs_source, 0);
+    glCompileShader(fs);
+    check_shader(fs, "fragment shader");
+
+    msdf_shader = glCreateProgram();
+    glAttachShader(msdf_shader, vs);
+    glAttachShader(msdf_shader, fs);
+    glLinkProgram(msdf_shader);
+    check_program(msdf_shader, "msdf program");
+
+    GLuint msdf_texture;
+    glGenTextures(1, &msdf_texture);
+    glBindTexture(GL_TEXTURE_2D, msdf_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Load glyph data
+    namespace df = msdfgen;
+
+    struct Shape {
+        df::Shape shape; ImVec2 off, size;
+    };
+    std::vector<Shape> shapes;
+
+    {
+        auto* freetype = df::initializeFreetype();
+        auto* font = df::loadFont(freetype, "../../misc/fonts/Cousine-Regular.ttf");
+
+        //for (int i = 33; i < 127; i++) {
+        for (int i = 'A'; i < 'A' + 1; i++) {
+            df::Shape shape;
+            if (df::loadGlyph(shape, font, i)) {
+                shape.inverseYAxis = true;
+                shape.normalize();
+                df::edgeColoringSimple(shape, 3.0);
+
+                double l = DBL_MAX, b = DBL_MAX, r = -DBL_MAX, t = -DBL_MAX;
+                shape.bounds(l, b, r, t);
+                ImVec2 off((float)l, (float)b);
+                ImVec2 size = ImVec2((float)r, (float)t) - off;
+                printf("character: %c, %f %f %f %f\n", i, l, b, r, t);
+                shapes.push_back({ shape, off, size });
+            }
+        }
+        //df::destroyFont(font);
+        //df::deinitializeFreetype(freetype);
+    }
+
+    float scale = 1;
+    int padding = 2;
+    int wh;
+
+    auto run_packing = [&]() {
+        // Pack glyph areas into an atlas
+        ImVector<stbrp_rect> rects;
+        {
+            rects.resize(shapes.size());
+            int area = 0;
+            for (size_t i = 0; i < shapes.size(); i++) {
+                ImVec2 size = shapes[i].size;
+                stbrp_rect& r = rects[i];
+                r.w = (stbrp_coord)ceil(size.x * scale + padding * 2);
+                r.h = (stbrp_coord)ceil(size.y * scale + padding * 2);
+                area += r.w * r.h;
+            }
+            wh = (int)ceil(sqrt(area * 1.5));
+            //wh = (int)ceil(sqrt(area * 2));
+
+            ImVector<stbrp_node> nodes;
+
+            nodes.resize(wh * 2);
+            stbrp_context cont = { 0 };
+            stbrp_init_target(&cont, wh, wh, nodes.begin(), nodes.size());
+            stbrp_pack_rects(&cont, rects.begin(), rects.size());
+        }
+
+        // Render them
+        {
+            df::Bitmap<ImU8, 3> image(ALIGN_UP(wh, 4), wh);
+            auto conv = [](float x) {
+                return (ImU8)fminf(fmaxf(x*256.0f, 0.0f), 255.0f);
+            };
+
+            for (size_t i = 0; i < shapes.size(); i++) {
+                Shape& s = shapes[i];
+                stbrp_rect r = rects[i];
+                if (!r.was_packed)
+                    continue;
+                df::Bitmap<float, 3> msdf(r.w, r.h);
+
+                ImVec2 glyph_center = s.size / 2 + s.off;
+                ImVec2 image_center = ImVec2(r.w, r.h) / 2;
+                ImVec2 tr = image_center / scale - glyph_center;
+
+                df::generateMSDF(msdf, s.shape, 2, scale, { tr.x, tr.y });
+                for (int y = 0; y < msdf.height(); y++) {
+                    for (int x = 0; x < msdf.width(); x++) {
+                        float *a = msdf(x, y);
+                        ImU8 *b = image(r.x + x, r.y + y);
+                        b[0] = conv(a[0]);
+                        b[1] = conv(a[1]);
+                        b[2] = conv(a[2]);
+                    }
+                }
+            }
+
+            glBindTexture(GL_TEXTURE_2D, msdf_texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, image.width(), image.height(), 0, GL_RGB, GL_UNSIGNED_BYTE, (ImU8*)image);
+        }
+    };
+
+    run_packing();
 
     // Main loop
-    while (!glfwWindowShouldClose(window))
-    {
-        // Poll and handle events (inputs, window resize, etc.)
-        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
-        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
-        // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+    while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-
-        // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-        if (show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
+        ImGui::ShowDemoWindow();
 
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
-        {
-            static float f = 0.0f;
-            static int counter = 0;
+        /* TODO:
+        minimize SDF size for each glyph
+        -automatically - would need a better way to evaluate accuracy than the scanline API
+        -manually - only ~100 glyphs for ASCII, persistent storeage
+        parallelize + async
+        -or persistently cache the SDF
+        */
 
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+        ImGui::Begin("MSDF test");
 
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-            ImGui::Checkbox("Another Window", &show_another_window);
+        //double min = 1e-3;
+        //if (ImGui::DragFloat("PX range", &pxrange, 0.1f, 1, 100)) {
+        //    run_packing();
+        //}
+        //if (ImGui::DragScalar("Scale", ImGuiDataType_Double, &scale.x, 0.01f, &min)) {
+        //    scale.y = scale.x;
+        //    run_packing();
+        //}
+        //if (ImGui::DragScalarN("Translate", ImGuiDataType_Double, &trans.x, 2, 0.1f)) {
+        //    run_packing();
+        //}
 
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+        static bool show_raw = false;
+        ImGui::Checkbox("Show raw MSDF", &show_raw);
 
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
+        if (ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 10))
+            run_packing();
+        //if (ImGui::DragInt("Padding", &padding, 0.1f, 1, 100))
+        //    run_packing();
 
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            ImGui::End();
+        static float px_range = 2;
+        ImGui::SliderFloat("Shader PX range", &px_range, 0.01f, 10.0f);
+
+        int w, h;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
+        ImGui::Text("Atlas size: %d:%d, %d bytes", w, h, w * h * 3);
+
+        if (!show_raw) {
+            auto cb = [&]() {
+                GLint prog;
+                glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+                int proj = glGetUniformLocation(prog, "ProjMtx");
+                GLfloat matrix[4 * 4];
+                glGetUniformfv(prog, proj, matrix);
+                glUseProgram(msdf_shader);
+                int proj_new = glGetUniformLocation(msdf_shader, "ProjMtx");
+                glUniformMatrix4fv(proj_new, 1, GL_FALSE, matrix);
+                glUniform1f(glGetUniformLocation(msdf_shader, "pxRange"), px_range);
+            };
+
+            auto& drw = *ImGui::GetWindowDrawList();
+            drw.AddCallback([](const ImDrawList*, const ImDrawCmd* cmd) {
+                (*static_cast<decltype(cb)*>(cmd->UserCallbackData))();
+            }, &cb);
+            ImGui::Image((ImTextureID)msdf_texture, ImGui::GetContentRegionAvail());
+            drw.AddCallback(ImDrawCallback_ResetRenderState, NULL);
+        }
+        else {
+            ImGui::Image((ImTextureID)msdf_texture, ImGui::GetContentRegionAvail());
         }
 
-        // 3. Show another simple window.
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-            ImGui::Text("Hello from another window!");
-            if (ImGui::Button("Close Me"))
-                show_another_window = false;
-            ImGui::End();
-        }
+        ImGui::End();
 
         // Rendering
-        ImGui::Render();
         int display_w, display_h;
         glfwMakeContextCurrent(window);
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
+        ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
         glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT);
+        ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwMakeContextCurrent(window);
