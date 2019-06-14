@@ -27,7 +27,7 @@ bool init() {
     // Create application window
     wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("ImGui Example"), NULL };
     ::RegisterClassEx(&wc);
-    hwnd = ::CreateWindow(wc.lpszClassName, _T("Dear ImGui DirectX9 Example"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
+    hwnd = ::CreateWindow(wc.lpszClassName, _T("Evolution Simulator"), WS_OVERLAPPEDWINDOW, 100, 100, 1280 * 3 / 4, 800 * 3 / 4, NULL, NULL, wc.hInstance, NULL);
 
     // Initialize Direct3D
     if (!CreateDeviceD3D(hwnd))
@@ -232,17 +232,28 @@ int main(int, char**) {
     if (!init())
         return false;
 
+    //ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
+
     while (start_frame()) {
         ImGuiIO& io = ImGui::GetIO();
+        ImGui::SetNextWindowPos({ 0, 0 });
         ImGui::SetNextWindowSize(io.DisplaySize);
-        ImGui::Begin("fulscreen_window", NULL,
+        ImGui::Begin("Evolution Simulator", NULL,
             ImGuiWindowFlags_NoBringToFrontOnFocus |
             ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoResize |
-            ImGuiWindowFlags_NoTitleBar
+            ImGuiWindowFlags_NoTitleBar |
+            ImGuiWindowFlags_NoCollapse
         );
-        ImGui::Text("test");
+
+
+        static bool show_demo = false;
+        ImGui::Checkbox("Show demo window", &show_demo);
+        if (show_demo)
+            ImGui::ShowDemoWindow(&show_demo);
+
         ImGui::End();
+
 
         end_frame();
     }
