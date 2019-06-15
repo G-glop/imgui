@@ -1,230 +1,250 @@
-// dear imgui: standalone example application for DirectX 9
-// If you are new to dear imgui, see examples/README.txt and documentation at the top of imgui.cpp.
+#include <stdio.h>
+#include <vector>
 
-#include "imgui.h"
-#include "imgui_impl_dx9.h"
-#include "imgui_impl_win32.h"
-#include <d3d9.h>
-#define DIRECTINPUT_VERSION 0x0800
-#include <dinput.h>
-#include <tchar.h>
+#include "prolouge.h"
 
-// Data
-static LPDIRECT3D9              g_pD3D = NULL;
-static LPDIRECT3DDEVICE9        g_pd3dDevice = NULL;
-static D3DPRESENT_PARAMETERS    g_d3dpp = {};
+typedef unsigned int uint;
 
-// Forward declarations of helper functions
-bool CreateDeviceD3D(HWND hWnd);
-void CleanupDeviceD3D();
-void ResetDevice();
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-WNDCLASSEX wc;
-HWND hwnd;
-
-bool init() {
-    // Create application window
-    wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("ImGui Example"), NULL };
-    ::RegisterClassEx(&wc);
-    hwnd = ::CreateWindow(wc.lpszClassName, _T("Evolution Simulator"), WS_OVERLAPPEDWINDOW, 100, 100, 1280 * 3 / 4, 800 * 3 / 4, NULL, NULL, wc.hInstance, NULL);
-
-    // Initialize Direct3D
-    if (!CreateDeviceD3D(hwnd))
-    {
-        CleanupDeviceD3D();
-        ::UnregisterClass(wc.lpszClassName, wc.hInstance);
-        return false;
-    }
-
-    // Show the window
-    ::ShowWindow(hwnd, SW_SHOWDEFAULT);
-    ::UpdateWindow(hwnd);
-
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
-    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
-    //io.ConfigViewportsNoAutoMerge = true;
-    //io.ConfigViewportsNoTaskBarIcon = true;
-
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-    //ImGui::StyleColorsClassic();
-
-    // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
-    ImGuiStyle& style = ImGui::GetStyle();
-    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-    {
-        style.WindowRounding = 0.0f;
-        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-    }
-
-    // Setup Platform/Renderer bindings
-    ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX9_Init(g_pd3dDevice);
-
-    // Load Fonts
-    // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
-    // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
-    // - If the file cannot be loaded, the function will return NULL. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
-    // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
-    // - Read 'misc/fonts/README.txt' for more instructions and details.
-    // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
-    //io.Fonts->AddFontDefault();
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
-    //io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
-    //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
-    //IM_ASSERT(font != NULL);
-    return true;
+float random(float min, float max) {
+    return min + float(rand()) / float(RAND_MAX)*(max - min);
+}
+float random(float max) {
+    return random(0, max);
 }
 
-bool start_frame() {
-    MSG msg;
-    ZeroMemory(&msg, sizeof(msg));
-    // Poll and handle messages (inputs, window resize, etc.)
-    // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-    // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application.
-    // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
-    // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
-    while (::PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE)) {
-        ::TranslateMessage(&msg);
-        ::DispatchMessage(&msg);
-        if (msg.message == WM_QUIT)
-            return false;
-    }
-
-    // Start the Dear ImGui frame
-    ImGui_ImplDX9_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-
-    return true;
+int irandom(int min, int max) {
+    return min + rand() % (max - min + 1);
+}
+int irandom(int max) {
+    return irandom(0, max);
 }
 
-void end_frame() {
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+float clamp(float value, float min, float max) {
+    return fmax(fmin(value, max), min);
+}
 
-        // Rendering
-        ImGui::EndFrame();
-        g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, false);
-		g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, false);
-        g_pd3dDevice->SetRenderState(D3DRS_SCISSORTESTENABLE, false);
-        D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x*255.0f), (int)(clear_color.y*255.0f), (int)(clear_color.z*255.0f), (int)(clear_color.w*255.0f));
-        g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, clear_col_dx, 1.0f, 0);
-        if (g_pd3dDevice->BeginScene() >= 0)
-        {
-            ImGui::Render();
-            ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
-            g_pd3dDevice->EndScene();
+struct Node {
+    float2 pos, vel;
+    float mass_diameter, friction_c;
+};
+
+struct Muscle {
+    uint node1, node2;
+    float period;
+    float contract_time, contract_length, extend_time, extend_length;
+    //float thru_period;
+    float length;
+    float rigidity;
+};
+
+struct Guy {
+    std::vector<Node> nodes;
+    std::vector<Muscle> muscles;
+    float heartbeat;
+    float t_simulation = 0;
+};
+
+//struct Generation {
+//    Guy worst, avg, best;
+//    float percentile[29];
+//};
+
+const float SORT_ANIMATION_SPEED = 5.0f; // Determines speed of sorting animation.  Higher number is faster.
+const float MINIMUM_NODE_SIZE = 0.4f; // Note: all units are 20 cm.  Meaning, a value of 1 equates to a 20 cm node.
+const float MAXIMUM_NODE_SIZE = 0.4f;
+const float MINIMUM_NODE_FRICTION = 0.0f;
+const float MAXIMUM_NODE_FRICTION = 1.0f;
+const float2 GRAVITY = { 0, -0.005f }; // higher = more friction.
+const float AIR_FRICTION = 0.95f; // The lower the number, the more friction.  1 = no friction.  Above 1 = chaos.
+const float MUTABILITY_FACTOR = 1.0f; // How fast the creatures mutate.  1 is normal.
+const float FRICTION = 4.0f;
+
+void tick_guy_physics(Guy& guy) {
+    // Apply muscle forces
+    for (Muscle& m : guy.muscles) {
+        Node& a = guy.nodes[m.node1];
+        Node& b = guy.nodes[m.node2];
+        float2 diff = a.pos - b.pos;
+        float len = linalg::length(diff);
+        float force = clamp(1 - len / m.length, -0.4f, 0.4f);
+        float2 ndiff = diff / len * (force * m.rigidity);
+        a.vel += ndiff / a.mass_diameter;
+        b.vel -= ndiff / b.mass_diameter;
+    }
+    for (Node& n : guy.nodes) {
+        // Node physics
+        n.vel += GRAVITY;
+        n.vel *= AIR_FRICTION;
+        n.pos += n.vel;
+        // Collision with ground
+        float dif = n.pos.y - n.mass_diameter / 2;
+        if (dif < 0) {
+            n.pos.y = n.mass_diameter / 2;
+            n.vel.y = 0;
+            n.pos.x -= n.vel.x * n.friction_c;
+            n.vel.x -= copysignf(dif * n.friction_c * FRICTION, n.vel.x);
+        }
+    }
+}
+
+void tick_guy_life(Guy& guy) {
+    for (Muscle& m : guy.muscles) {
+        float phase = fmod(guy.t_simulation / (guy.heartbeat * m.period), 1.0f);
+        if (
+            phase <= m.extend_time && m.extend_time <= m.contract_time ||
+            m.contract_time <= phase && phase <= m.extend_time ||
+            m.extend_time <= m.contract_time && m.contract_time <= phase)
+            m.length = m.contract_length;
+        else
+            m.length = m.extend_length;
+    }
+}
+
+void tick_guy(Guy& guy) {
+    tick_guy_life(guy);
+    tick_guy_physics(guy);
+    guy.t_simulation += 1;
+}
+
+void move_until_stable(Guy& guy) {
+    for (int i = 0; i < 200; i++) {
+        tick_guy_physics(guy);
+    }
+    for (Node& n : guy.nodes)
+        n.vel = { 0, 0 };
+}
+
+void add_random_muscle_from_to(Guy& guy, int node1, int node2) {
+    guy.muscles.resize(guy.muscles.size() + 1);
+    Muscle& m = guy.muscles.back();
+
+    m.node1 = node1;
+    m.node2 = node2;
+
+    m.period = random(1, 3);
+    m.rigidity = random(0.02f, 0.08f);
+
+    float rlen1 = random(0.5, 1.5);
+    float rlen2 = random(0.5, 1.5);
+    m.contract_length = fmin(rlen1, rlen2);
+    m.extend_length = fmax(rlen1, rlen2);
+    m.contract_time = random(0, 1);
+    m.extend_time = random(0, 1);
+    m.length = int(m.contract_time / m.extend_time) ? m.contract_length : m.extend_length;
+}
+
+//void add_random_muscle(Guy& guy) {
+//
+//}
+
+void check_and_fix_guy(Guy& guy) {
+    // Remove double muscles
+    auto& mus = guy.muscles;
+    for (uint i = 0; i < mus.size(); i++) {
+        Muscle& a = mus[i];
+        for (uint j = i + 1; j < mus.size(); j++) {
+            Muscle& b = mus[j];
+            if (
+                a.node1 == b.node1 && a.node2 == b.node2 ||
+                a.node1 == b.node2 && a.node2 == b.node1 ||
+                b.node1 == b.node2) {
+                mus.erase(mus.begin() + j);
+                j -= 1;
+            }
+        }
+    }
+    // Connect lone nodes
+    for (uint i = 0; i < guy.nodes.size(); i++) {
+        uint first_edge = 0;
+        int edges = 0;
+        for (Muscle& m : guy.muscles) {
+            if (m.node1 == i)
+                first_edge = m.node2;
+            if (m.node2 == i)
+                first_edge = m.node1;
+            if (m.node1 == i || m.node2 == i)
+                edges += 1;
         }
 
-        // Update and Render additional Platform Windows
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
+        if (edges < 2) {
+            uint to;
+            do
+                to = irandom(0, guy.nodes.size());
+            while (to == i || to == first_edge);
+            add_random_muscle_from_to(guy, i, to);
         }
-
-        HRESULT result = g_pd3dDevice->Present(NULL, NULL, NULL, NULL);
-
-    // Handle loss of D3D9 device
-    if (result == D3DERR_DEVICELOST && g_pd3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET)
-        ResetDevice();
-}
-
-void shutdown() {
-    ImGui_ImplDX9_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    ImGui::DestroyContext();
-
-    CleanupDeviceD3D();
-    ::DestroyWindow(hwnd);
-    ::UnregisterClass(wc.lpszClassName, wc.hInstance);
-}
-
-// Helper functions
-
-bool CreateDeviceD3D(HWND hWnd)
-{
-    if ((g_pD3D = Direct3DCreate9(D3D_SDK_VERSION)) == NULL)
-        return false;
-
-    // Create the D3DDevice
-    ZeroMemory(&g_d3dpp, sizeof(g_d3dpp));
-    g_d3dpp.Windowed = TRUE;
-    g_d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-    g_d3dpp.BackBufferFormat = D3DFMT_UNKNOWN;
-    g_d3dpp.EnableAutoDepthStencil = TRUE;
-    g_d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
-    g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;           // Present with vsync
-    //g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;   // Present without vsync, maximum unthrottled framerate
-    if (g_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &g_d3dpp, &g_pd3dDevice) < 0)
-        return false;
-
-    return true;
-}
-
-void CleanupDeviceD3D()
-{
-    if (g_pd3dDevice) { g_pd3dDevice->Release(); g_pd3dDevice = NULL; }
-    if (g_pD3D) { g_pD3D->Release(); g_pD3D = NULL; }
-}
-
-void ResetDevice()
-{
-    ImGui_ImplDX9_InvalidateDeviceObjects();
-    HRESULT hr = g_pd3dDevice->Reset(&g_d3dpp);
-    if (hr == D3DERR_INVALIDCALL)
-        IM_ASSERT(0);
-    ImGui_ImplDX9_CreateDeviceObjects();
-}
-
-#ifndef WM_DPICHANGED
-#define WM_DPICHANGED 0x02E0 // From Windows SDK 8.1+ headers
-#endif
-
-// Win32 message handler
-extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-        return true;
-
-    switch (msg)
-    {
-    case WM_SIZE:
-        if (g_pd3dDevice != NULL && wParam != SIZE_MINIMIZED)
-        {
-            g_d3dpp.BackBufferWidth = LOWORD(lParam);
-            g_d3dpp.BackBufferHeight = HIWORD(lParam);
-            ResetDevice();
-        }
-        return 0;
-    case WM_SYSCOMMAND:
-        if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
-            return 0;
-        break;
-    case WM_DESTROY:
-        ::PostQuitMessage(0);
-        return 0;
-    case WM_DPICHANGED:
-        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DpiEnableScaleViewports)
-        {
-            //const int dpi = HIWORD(wParam);
-            //printf("WM_DPICHANGED to %d (%.0f%%)\n", dpi, (float)dpi / 96.0f * 100.0f);
-            const RECT* suggested_rect = (RECT*)lParam;
-            ::SetWindowPos(hWnd, NULL, suggested_rect->left, suggested_rect->top, suggested_rect->right - suggested_rect->left, suggested_rect->bottom - suggested_rect->top, SWP_NOZORDER | SWP_NOACTIVATE);
-        }
-        break;
     }
-    return ::DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
+Guy gen_guy() {
+    Guy guy;
+    int n_node = irandom(3, 6);
+    int n_muscle = irandom(n_node - 1, n_node * 3 - 6);
+
+    guy.nodes.resize(n_node);
+    for (Node& n : guy.nodes) {
+        n.pos = { random(-1, 1), random(0, 2) };
+        n.mass_diameter = random(MINIMUM_NODE_SIZE, MAXIMUM_NODE_SIZE);
+        n.friction_c = random(MINIMUM_NODE_FRICTION, MAXIMUM_NODE_FRICTION);
+    }
+
+    guy.muscles.reserve(n_muscle);
+    for (int i = 0; i < n_muscle; i++) {
+        int node1, node2;
+        if (i < n_node - 1) {
+            node1 = i;
+            node2 = i + 1;
+        }
+        else {
+            node1 = irandom(n_node);
+            do
+                node2 = irandom(n_node - 1);
+            while (node2 == node1);
+        }
+        add_random_muscle_from_to(guy, node1, node2);
+    }
+
+    guy.heartbeat = random(40, 80);
+    check_and_fix_guy(guy);
+    move_until_stable(guy);
+    return std::move(guy);
+}
+
+void draw_guy(Guy& guy, float2 pos, float size, float scale) {
+    auto& drw = *ImGui::GetWindowDrawList();
+    static float ground_pos = 0.8;
+
+    float average_x = 0;
+    for (Node& n : guy.nodes)
+        average_x += n.pos.x / guy.nodes.size();
+
+    auto tran = [&](float2 vec) -> float2 {
+        return float2{ (vec.x - average_x) * scale + size / 2, ground_pos * size - vec.y * scale } + pos;
+    };
+
+    drw.PushClipRect(pos, pos + size);
+    drw.AddRectFilled(pos, pos + size, guy.t_simulation < 900 ? ImColor(120, 200, 255) : ImColor(60, 100, 128));
+    // draw signs
+    for (Muscle& m : guy.muscles) {
+        drw.AddLine(
+            tran(guy.nodes[m.node1].pos),
+            tran(guy.nodes[m.node2].pos),
+            ImColor(70, 35, 0, int(m.rigidity * 3000)),
+            (m.length == m.contract_length ? 0.1f : 0.2f) * scale);
+    }
+    for (Node& n : guy.nodes) {
+        drw.AddCircleFilled(
+            tran(n.pos),
+            n.mass_diameter / 2 * scale,
+            n.friction_c <= 0.5 ?
+            ImColor(255, 255 - int(n.friction_c * 512), 255 - int(n.friction_c * 512)) :
+            ImColor(512 - int(n.friction_c * 512), 0, 0),
+            20);
+    }
+    drw.AddRectFilled(pos + float2(0, size * ground_pos), pos + size, ImColor(0, 130, 0));
+    drw.PopClipRect();
+
+    //ImGui::SliderFloat("ground pos", &ground_pos, 0, 1);
 }
 
 // Main code
@@ -233,27 +253,36 @@ int main(int, char**) {
         return false;
 
     //ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
-
     while (start_frame()) {
+        fullscreen_dockspace();
         ImGuiIO& io = ImGui::GetIO();
-        ImGui::SetNextWindowPos({ 0, 0 });
-        ImGui::SetNextWindowSize(io.DisplaySize);
-        ImGui::Begin("Evolution Simulator", NULL,
-            ImGuiWindowFlags_NoBringToFrontOnFocus |
-            ImGuiWindowFlags_NoMove |
-            ImGuiWindowFlags_NoResize |
-            ImGuiWindowFlags_NoTitleBar |
-            ImGuiWindowFlags_NoCollapse
-        );
 
+        using namespace ImGui;
 
-        static bool show_demo = false;
-        ImGui::Checkbox("Show demo window", &show_demo);
-        if (show_demo)
-            ImGui::ShowDemoWindow(&show_demo);
+        ImGui::ShowDemoWindow();
+
+        ImGui::Begin("performance graph");
+        SetWindowFontScale(3);
+        Text("Generation %d", 1);
+        SetWindowFontScale(1);
 
         ImGui::End();
 
+        ImGui::Begin("species graph");
+        ImGui::End();
+
+        ImGui::Begin("control");
+        srand(10);
+        static Guy test_guy = gen_guy();
+        tick_guy(test_guy);
+        draw_guy(test_guy,
+            GetCursorScreenPos(),
+            linalg::minelem((float2)GetContentRegionAvail()),
+            1.0f / 0.015f);
+
+        ImGui::End();
+
+        ImGui::End();
 
         end_frame();
     }

@@ -48,11 +48,16 @@
     <ClInclude Include="..\imgui_impl_dx9.h">
       <Filter>sources</Filter>
     </ClInclude>
+    <ClInclude Include="linalg.h" />
+    <ClInclude Include="prolouge.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.txt" />
     <None Include="..\..\misc\natvis\imgui.natvis">
       <Filter>sources</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="todo.txt" />
   </ItemGroup>
 </Project>
