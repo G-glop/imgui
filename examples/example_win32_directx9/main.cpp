@@ -42,12 +42,20 @@ struct Guy {
     std::vector<Muscle> muscles;
     float heartbeat;
     float t_simulation = 0;
+    float camera_x = 0;
 };
 
-//struct Generation {
-//    Guy worst, avg, best;
-//    float percentile[29];
-//};
+struct GuySlim {
+    float fitness;
+    int n_node, n_muscle;
+};
+
+struct Generation {
+    Guy worst, avg, best;
+    std::vector<GuySlim> guys;
+};
+
+std::vector<Generation> generations;
 
 const float SORT_ANIMATION_SPEED = 5.0f; // Determines speed of sorting animation.  Higher number is faster.
 const float MINIMUM_NODE_SIZE = 0.4f; // Note: all units are 20 cm.  Meaning, a value of 1 equates to a 20 cm node.
@@ -110,8 +118,13 @@ void move_until_stable(Guy& guy) {
     for (int i = 0; i < 200; i++) {
         tick_guy_physics(guy);
     }
+    float average_x = 0;
     for (Node& n : guy.nodes)
+        average_x += n.pos.x / guy.nodes.size();
+    for (Node& n : guy.nodes) {
+        n.pos.x -= average_x;
         n.vel = { 0, 0 };
+    }
 }
 
 void add_random_muscle_from_to(Guy& guy, int node1, int node2) {
@@ -211,29 +224,46 @@ Guy gen_guy() {
 }
 
 void draw_guy(Guy& guy, float2 pos, float size, float scale) {
-    auto& drw = *ImGui::GetWindowDrawList();
-    static float ground_pos = 0.8;
+    auto& draw = *ImGui::GetWindowDrawList();
+    float ground_pos = 0.8f;
 
     float average_x = 0;
     for (Node& n : guy.nodes)
         average_x += n.pos.x / guy.nodes.size();
+    guy.camera_x += (average_x - guy.camera_x) * 0.1f;
 
     auto tran = [&](float2 vec) -> float2 {
-        return float2{ (vec.x - average_x) * scale + size / 2, ground_pos * size - vec.y * scale } + pos;
+        return float2{ (vec.x - guy.camera_x) * scale + size / 2, ground_pos * size - vec.y * scale } + pos;
     };
 
-    drw.PushClipRect(pos, pos + size);
-    drw.AddRectFilled(pos, pos + size, guy.t_simulation < 900 ? ImColor(120, 200, 255) : ImColor(60, 100, 128));
-    // draw signs
+    draw.PushClipRect(pos, pos + size);
+    // Background
+    draw.AddRectFilled(pos, pos + size, guy.t_simulation < 900 ? ImColor(120, 200, 255) : ImColor(60, 100, 128));
+    // Draw posts
+    ImFont& font = *ImGui::GetFont();
+    int spacing = 5;
+    for (int i = int((guy.camera_x - size / 2 / scale) / spacing) * spacing; i < int(guy.camera_x + size / 2 / scale) + spacing; i += spacing) {
+        char buffer[32];
+        snprintf(buffer, sizeof(buffer), "%d m", (int)i);
+        float line_h = 0.5f;
+        float post_h = 2.0f;
+        float2 text_size = font.CalcTextSizeA(line_h, FLT_MAX, 0.0f, buffer);
+        float2 text_center = { float(i), post_h };
+        draw.AddLine(tran({ (float)i, 0 }), tran({ (float)i, post_h }), ImColor(255, 255, 255), 0.1f * scale);
+        draw.AddRectFilled(tran(text_center + text_size * 0.6f), tran(text_center - text_size * 0.6f), ImColor(255, 255, 255));
+        draw.AddText(&font, line_h * scale, tran({ float(i) - text_size.x / 2, post_h + text_size.y / 2 }), ImColor(120, 120, 120), buffer);
+    }
+    // Draw muscles
     for (Muscle& m : guy.muscles) {
-        drw.AddLine(
+        draw.AddLine(
             tran(guy.nodes[m.node1].pos),
             tran(guy.nodes[m.node2].pos),
             ImColor(70, 35, 0, int(m.rigidity * 3000)),
             (m.length == m.contract_length ? 0.1f : 0.2f) * scale);
     }
+    // Draw nodes
     for (Node& n : guy.nodes) {
-        drw.AddCircleFilled(
+        draw.AddCircleFilled(
             tran(n.pos),
             n.mass_diameter / 2 * scale,
             n.friction_c <= 0.5 ?
@@ -241,10 +271,27 @@ void draw_guy(Guy& guy, float2 pos, float size, float scale) {
             ImColor(512 - int(n.friction_c * 512), 0, 0),
             20);
     }
-    drw.AddRectFilled(pos + float2(0, size * ground_pos), pos + size, ImColor(0, 130, 0));
-    drw.PopClipRect();
+    draw.AddRectFilled(pos + float2(0, size * ground_pos), pos + size, ImColor(0, 130, 0));
+    draw.PopClipRect();
 
     //ImGui::SliderFloat("ground pos", &ground_pos, 0, 1);
+    //ImGui::DragFloat("cam x", &guy.camera_x);
+}
+
+void draw_fitness() {
+    if (generations.size() == 0)
+        return;
+
+    std::vector<float> line(generations[0].guys.size());
+
+}
+
+void draw_species() {
+
+}
+
+void draw_histogram() {
+
 }
 
 // Main code
@@ -272,13 +319,15 @@ int main(int, char**) {
         ImGui::End();
 
         ImGui::Begin("control");
+        static float scale = 2.0f / 0.015f;
         srand(10);
         static Guy test_guy = gen_guy();
         tick_guy(test_guy);
         draw_guy(test_guy,
             GetCursorScreenPos(),
             linalg::minelem((float2)GetContentRegionAvail()),
-            1.0f / 0.015f);
+            scale);
+        ImGui::DragFloat("scale", &scale, 1);
 
         ImGui::End();
 

@@ -1,10 +1,12 @@
 
 creature generation and simulation functions done
 
-finish creture drawing functions
+creature drawing
+-distance/time display
 other drawing functions
+-fitness graph
+-species graph
+-histogram
 mutation
 genetic algorithm
 paralleize
-
-nearest interpolation for text
