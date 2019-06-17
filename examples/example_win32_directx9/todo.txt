@@ -10,3 +10,9 @@ other drawing functions
 mutation
 genetic algorithm
 paralleize
+
+next gen (heh):
+Based on NEAT
+https://weightagnostic.github.io/
+https://arxiv.org/abs/1906.04358
+https://twitter.com/hardmaru/status/1138600152048910336
