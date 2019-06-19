@@ -4,11 +4,11 @@ creature generation and simulation functions done
 creature drawing
 -distance/time display
 other drawing functions
--fitness graph
 -species graph
 -histogram
 mutation
 genetic algorithm
+history slider / scroll and zoom
 paralleize
 
 next gen (heh):

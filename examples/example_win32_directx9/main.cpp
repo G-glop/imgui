@@ -3,6 +3,8 @@
 
 #include "prolouge.h"
 
+namespace im = ImGui;
+
 typedef unsigned int uint;
 
 float random(float min, float max) {
@@ -45,14 +47,15 @@ struct Guy {
     float camera_x = 0;
 };
 
-struct GuySlim {
-    float fitness;
-    int n_node, n_muscle;
+struct Species {
+    int n_nodes, n_muscles, count;
 };
 
 struct Generation {
     Guy worst, avg, best;
-    std::vector<GuySlim> guys;
+    std::vector<float> fit;
+    std::vector<Species> species;
+
 };
 
 std::vector<Generation> generations;
@@ -224,7 +227,7 @@ Guy gen_guy() {
 }
 
 void draw_guy(Guy& guy, float2 pos, float size, float scale) {
-    auto& draw = *ImGui::GetWindowDrawList();
+    auto& draw = *im::GetWindowDrawList();
     float ground_pos = 0.8f;
 
     float average_x = 0;
@@ -240,7 +243,7 @@ void draw_guy(Guy& guy, float2 pos, float size, float scale) {
     // Background
     draw.AddRectFilled(pos, pos + size, guy.t_simulation < 900 ? ImColor(120, 200, 255) : ImColor(60, 100, 128));
     // Draw posts
-    ImFont& font = *ImGui::GetFont();
+    ImFont& font = *im::GetFont();
     int spacing = 5;
     for (int i = int((guy.camera_x - size / 2 / scale) / spacing) * spacing; i < int(guy.camera_x + size / 2 / scale) + spacing; i += spacing) {
         char buffer[32];
@@ -274,16 +277,105 @@ void draw_guy(Guy& guy, float2 pos, float size, float scale) {
     draw.AddRectFilled(pos + float2(0, size * ground_pos), pos + size, ImColor(0, 130, 0));
     draw.PopClipRect();
 
-    //ImGui::SliderFloat("ground pos", &ground_pos, 0, 1);
-    //ImGui::DragFloat("cam x", &guy.camera_x);
+    //im::SliderFloat("ground pos", &ground_pos, 0, 1);
+    //im::DragFloat("cam x", &guy.camera_x);
 }
 
 void draw_fitness() {
-    if (generations.size() == 0)
+    struct Line {
+        int pos;
+        float thickness = 3;
+        ImU32 color = ImColor(0, 0, 0);
+
+    };
+    const Line lines[] = {
+        {0},
+        {1, 1},
+        {2, 1},
+        {3, 1},
+        {4, 1},
+        {5, 1},
+        {6, 1},
+        {7, 1},
+        {8, 1},
+        {9, 1},
+        {10},
+        {20},
+        {30},
+        {40},
+        {50, 5, ImColor(255, 0, 0)},
+        {60},
+        {70},
+        {80},
+        {90},
+        {91, 1},
+        {92, 1},
+        {93, 1},
+        {94, 1},
+        {95, 1},
+        {96, 1},
+        {97, 1},
+        {98, 1},
+        {99, 1},
+        {100},
+    };
+
+    auto& draw = *im::GetWindowDrawList();
+    float2 pos = im::GetCursorScreenPos(), size = im::GetContentRegionAvail();
+    size.x -= im::CalcTextSize("S99: 999").x;
+
+    draw.AddRectFilled(pos, pos + size, ImColor(220, 220, 220));
+
+    float padding = 5;
+    size -= padding * 2;
+    pos += padding;
+
+    const int gencount = generations.size();
+    if (gencount == 0)
         return;
+    const int gensize = generations[0].fit.size();
 
-    std::vector<float> line(generations[0].guys.size());
+    float min = FLT_MAX, max = -FLT_MAX;
+    for (Generation& g : generations) {
+        min = fminf(min, g.fit.front());
+        max = fmaxf(max, g.fit.back());
+    }
+    float range = max - min;
+    float tickwidth = im::CalcTextSize("999 m").x;
 
+    auto tran = [&](float2 p) {
+        return float2(p.x / (float)(gencount - 1), 1 - (p.y - min) / range) * float2(size.x - tickwidth, size.y) + float2(tickwidth, 0) + pos;
+    };
+
+    static int max_ticks = 10;
+    float maxstep = range / (float)max_ticks;
+    float upstep = powf(10.0f, ceilf(log10f(maxstep)));
+    float remstep = maxstep / upstep;
+    float step = (remstep < 0.2f ? 0.2f : (remstep < 0.5f ? 0.5f : 1.0f)) * upstep;
+
+    // draw y-axis lines and numbers
+    // better text pos
+    for (
+        float y = ceilf(min / step) * step;
+        y <= floorf(max / step) * step;
+        y += step)
+    {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d m", (int)y);
+        float2 ts = im::CalcTextSize(buf);
+        
+        draw.AddLine(tran({ 0, y }), tran({ (float)gencount - 1, y }), ImColor(150, 150, 150), 2);
+        draw.AddText(tran({ 0, y }) - float2(ts.x + 5, ts.y / 2.0f), ImColor(150, 150, 150), buf);
+    }
+    
+    std::vector<ImVec2> line(gencount);
+    for (Line l : lines) {
+        for (int i = 0; i < gencount; i++) {
+            line[i] = tran({ (float)i, generations[i].fit[std::min(l.pos * gensize / 100, gensize - 1)]});
+        }
+        draw.AddPolyline(&line.front(), line.size(), l.color, false, l.thickness);
+    }
+    im::DragInt("max_ticks", &max_ticks, 0.05f);
 }
 
 void draw_species() {
@@ -299,26 +391,34 @@ int main(int, char**) {
     if (!init())
         return false;
 
-    //ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
+    for (int i = 0; i < 3; i++) {
+        Generation gen;
+        gen.fit.resize(1000);
+        for (int j = 0; j < 1000; j++) {
+            gen.fit[j] = (j - 150) / 10.0f * log(i + 1);
+        }
+        generations.push_back(std::move(gen));
+    }
+
     while (start_frame()) {
         fullscreen_dockspace();
-        ImGuiIO& io = ImGui::GetIO();
+        ImGuiIO& io = im::GetIO();
 
         using namespace ImGui;
 
-        ImGui::ShowDemoWindow();
+        im::ShowDemoWindow();
 
-        ImGui::Begin("performance graph");
+        im::Begin("performance graph");
         SetWindowFontScale(3);
         Text("Generation %d", 1);
         SetWindowFontScale(1);
+        draw_fitness();
+        im::End();
 
-        ImGui::End();
+        im::Begin("species graph");
+        im::End();
 
-        ImGui::Begin("species graph");
-        ImGui::End();
-
-        ImGui::Begin("control");
+        im::Begin("control");
         static float scale = 2.0f / 0.015f;
         srand(10);
         static Guy test_guy = gen_guy();
@@ -327,11 +427,11 @@ int main(int, char**) {
             GetCursorScreenPos(),
             linalg::minelem((float2)GetContentRegionAvail()),
             scale);
-        ImGui::DragFloat("scale", &scale, 1);
+        im::DragFloat("scale", &scale, 1);
 
-        ImGui::End();
+        im::End();
 
-        ImGui::End();
+        im::End();
 
         end_frame();
     }
