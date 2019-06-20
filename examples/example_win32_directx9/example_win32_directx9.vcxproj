@@ -183,6 +183,7 @@
   <ItemGroup>
     <None Include="..\..\misc\natvis\imgui.natvis" />
     <None Include="..\README.txt" />
+    <None Include="original.java" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="todo.txt" />

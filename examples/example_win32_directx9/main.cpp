@@ -1,4 +1,6 @@
 #include <stdio.h>
+#define _USE_MATH_DEFINES 
+#include <math.h>
 #include <vector>
 
 #include "prolouge.h"
@@ -23,6 +25,13 @@ int irandom(int max) {
 
 float clamp(float value, float min, float max) {
     return fmax(fmin(value, max), min);
+}
+
+float gauss() {
+    float x = random(1),
+        y = random(1),
+        z = sqrtf(-2 * logf(x)) * cosf(2 * (float)M_PI * y);
+    return z;
 }
 
 struct Node {
@@ -51,11 +60,17 @@ struct Species {
     int n_nodes, n_muscles, count;
 };
 
+bool cmp_species(Species a, Species b) {
+    if (a.n_nodes != b.n_nodes)
+        return a.n_nodes < b.n_nodes;
+    else
+        return a.n_muscles < b.n_muscles;
+}
+
 struct Generation {
     Guy worst, avg, best;
     std::vector<float> fit;
     std::vector<Species> species;
-
 };
 
 std::vector<Generation> generations;
@@ -98,7 +113,7 @@ void tick_guy_physics(Guy& guy) {
     }
 }
 
-void tick_guy_life(Guy& guy) {
+void tick_guy(Guy& guy) {
     for (Muscle& m : guy.muscles) {
         float phase = fmod(guy.t_simulation / (guy.heartbeat * m.period), 1.0f);
         if (
@@ -109,10 +124,6 @@ void tick_guy_life(Guy& guy) {
         else
             m.length = m.extend_length;
     }
-}
-
-void tick_guy(Guy& guy) {
-    tick_guy_life(guy);
     tick_guy_physics(guy);
     guy.t_simulation += 1;
 }
@@ -236,7 +247,7 @@ void draw_guy(Guy& guy, float2 pos, float size, float scale) {
     guy.camera_x += (average_x - guy.camera_x) * 0.1f;
 
     auto tran = [&](float2 vec) -> float2 {
-        return float2{ (vec.x - guy.camera_x) * scale + size / 2, ground_pos * size - vec.y * scale } + pos;
+        return float2{ (vec.x - guy.camera_x) * scale + size / 2, ground_pos * size - vec.y * scale } +pos;
     };
 
     draw.PushClipRect(pos, pos + size);
@@ -282,104 +293,204 @@ void draw_guy(Guy& guy, float2 pos, float size, float scale) {
 }
 
 void draw_fitness() {
-    struct Line {
-        int pos;
-        float thickness = 3;
-        ImU32 color = ImColor(0, 0, 0);
 
-    };
-    const Line lines[] = {
-        {0},
-        {1, 1},
-        {2, 1},
-        {3, 1},
-        {4, 1},
-        {5, 1},
-        {6, 1},
-        {7, 1},
-        {8, 1},
-        {9, 1},
-        {10},
-        {20},
-        {30},
-        {40},
-        {50, 5, ImColor(255, 0, 0)},
-        {60},
-        {70},
-        {80},
-        {90},
-        {91, 1},
-        {92, 1},
-        {93, 1},
-        {94, 1},
-        {95, 1},
-        {96, 1},
-        {97, 1},
-        {98, 1},
-        {99, 1},
-        {100},
-    };
-
-    auto& draw = *im::GetWindowDrawList();
-    float2 pos = im::GetCursorScreenPos(), size = im::GetContentRegionAvail();
-    size.x -= im::CalcTextSize("S99: 999").x;
-
-    draw.AddRectFilled(pos, pos + size, ImColor(220, 220, 220));
-
-    float padding = 5;
-    size -= padding * 2;
-    pos += padding;
-
-    const int gencount = generations.size();
-    if (gencount == 0)
-        return;
-    const int gensize = generations[0].fit.size();
-
-    float min = FLT_MAX, max = -FLT_MAX;
-    for (Generation& g : generations) {
-        min = fminf(min, g.fit.front());
-        max = fmaxf(max, g.fit.back());
-    }
-    float range = max - min;
-    float tickwidth = im::CalcTextSize("999 m").x;
-
-    auto tran = [&](float2 p) {
-        return float2(p.x / (float)(gencount - 1), 1 - (p.y - min) / range) * float2(size.x - tickwidth, size.y) + float2(tickwidth, 0) + pos;
-    };
-
-    static int max_ticks = 10;
-    float maxstep = range / (float)max_ticks;
-    float upstep = powf(10.0f, ceilf(log10f(maxstep)));
-    float remstep = maxstep / upstep;
-    float step = (remstep < 0.2f ? 0.2f : (remstep < 0.5f ? 0.5f : 1.0f)) * upstep;
-
-    // draw y-axis lines and numbers
-    // better text pos
-    for (
-        float y = ceilf(min / step) * step;
-        y <= floorf(max / step) * step;
-        y += step)
-    {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%d m", (int)y);
-        float2 ts = im::CalcTextSize(buf);
-        
-        draw.AddLine(tran({ 0, y }), tran({ (float)gencount - 1, y }), ImColor(150, 150, 150), 2);
-        draw.AddText(tran({ 0, y }) - float2(ts.x + 5, ts.y / 2.0f), ImColor(150, 150, 150), buf);
-    }
-    
-    std::vector<ImVec2> line(gencount);
-    for (Line l : lines) {
-        for (int i = 0; i < gencount; i++) {
-            line[i] = tran({ (float)i, generations[i].fit[std::min(l.pos * gensize / 100, gensize - 1)]});
-        }
-        draw.AddPolyline(&line.front(), line.size(), l.color, false, l.thickness);
-    }
-    im::DragInt("max_ticks", &max_ticks, 0.05f);
 }
+
+ImU32 species_color(Species species, bool is_label) {
+    int num = species.n_nodes * 10 + species.n_muscles;
+    float col = fmodf(float(num) * 1.618034f, 1);
+    if (num == 46) {
+        col = 0.083333f;
+    }
+    else if (num == 44) {
+        col = 0.1666666f;
+    }
+    else if (num == 57) {
+        col = 0.5f;
+    }
+    float light = 1.0f;
+    if (fabsf(col - 0.333f) <= 0.18f && is_label) {
+        light = 0.7f;
+    }
+    ImColor ret;
+    ret.SetHSV(col, 1.0f, light);
+    return ret;
+};
 
 void draw_species() {
 
+}
+
+void draw_fitness_and_species() {
+    const int gencount = generations.size();
+    const int gensize = gencount != 0 ? generations[0].fit.size() : 0;
+    auto& draw = *im::GetOverlayDrawList();
+    float tickwidth = im::CalcTextSize(" 999 m").x;
+    float2 max_label = im::CalcTextSize("S99: 999 ");
+
+    { // Draw fitness
+        struct Line {
+            int pos;
+            float thickness = 3;
+            ImU32 color = ImColor(0, 0, 0);
+
+        };
+        const Line lines[] = {
+            {0},
+            {1, 1},
+            {2, 1},
+            {3, 1},
+            {4, 1},
+            {5, 1},
+            {6, 1},
+            {7, 1},
+            {8, 1},
+            {9, 1},
+            {10},
+            {20},
+            {30},
+            {40},
+            {50, 5, ImColor(255, 0, 0)},
+            {60},
+            {70},
+            {80},
+            {90},
+            {91, 1},
+            {92, 1},
+            {93, 1},
+            {94, 1},
+            {95, 1},
+            {96, 1},
+            {97, 1},
+            {98, 1},
+            {99, 1},
+            {100},
+        };
+
+        im::Begin("performance graph");
+        im::SetWindowFontScale(3);
+        im::Text("Generation %d", 1);
+        im::SetWindowFontScale(1);
+
+        float2 pos = im::GetCursorScreenPos(), size = im::GetContentRegionAvail();
+
+        if (gencount == 0)
+            return;
+
+        float padding = 5;
+        size.x -= max_label.x;
+        draw.AddRectFilled(pos, pos + size, ImColor(220, 220, 220));
+        size -= float2(tickwidth, 0) + padding * 2;
+        pos += float2(tickwidth, 0) + padding;
+
+        float min = FLT_MAX, max = -FLT_MAX;
+        for (Generation& g : generations) {
+            min = fminf(min, g.fit.front());
+            max = fmaxf(max, g.fit.back());
+        }
+        float range = max - min;
+
+        auto tran = [&](float2 p) {
+            return float2(p.x / (float)(gencount - 1), 1 - (p.y - min) / range) * size + pos;
+        };
+
+        static int max_ticks = 10;
+        float maxstep = range / (float)max_ticks;
+        float upstep = powf(10, ceilf(log10f(maxstep)));
+        float remstep = maxstep / upstep;
+        float step = (remstep < 0.2f ? 0.2f : (remstep < 0.5f ? 0.5f : 1)) * upstep;
+
+        for (
+            float y = ceilf(min / step) * step;
+            y <= floorf(max / step) * step;
+            y += step)
+        {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%d m", (int)y);
+            float2 ts = im::CalcTextSize(buf);
+
+            draw.AddLine(tran({ 0, y }), tran({ (float)gencount - 1, y }), ImColor(150, 150, 150), 2);
+            draw.AddText(tran({ 0, y }) - float2(ts.x + 5, ts.y / 2), ImColor(150, 150, 150), buf);
+        }
+
+        std::vector<ImVec2> line(gencount);
+        for (Line l : lines) {
+            for (int i = 0; i < gencount; i++) {
+                line[i] = tran({ (float)i, generations[i].fit[std::min(l.pos * gensize / 100, gensize - 1)] });
+            }
+            draw.AddPolyline(&line.front(), line.size(), l.color, false, l.thickness);
+        }
+        //im::DragInt("max_ticks", &max_ticks, 0.05f);
+        im::End();
+    }
+
+    { // Draw spcies
+        im::Begin("species graph");
+        float2 pos = im::GetCursorScreenPos(), size = im::GetContentRegionAvail();
+
+        float padding = 1.0f;
+        size.x -= tickwidth + max_label.x + padding * 4;
+        pos.x += tickwidth;
+
+        auto tran = [&](int x, int y) -> float2 {
+            return float2((float)x / (float)(gencount - 1), (float)y / (float)gensize) * size + pos;
+        };
+
+        for (int i = 0; i < gencount - 1; i++) {
+            auto& in_gen_a = generations[i].species;
+            auto& in_gen_b = generations[i + 1].species;
+
+            int counta = 0, countb = 0;
+
+            // @POLYNOMIC: add 'int index_in_next_gen' to Species and set it at append time
+            for (Species a : in_gen_a) {
+                for (Species b : in_gen_b) {
+                    if (a.n_nodes == b.n_nodes &&
+                        a.n_muscles == b.n_muscles) {
+                        float2 pa = tran(i, counta), pb = tran(i + 1, countb);
+                        float2 pc = tran(i + 1, countb + b.count), pd = tran(i, counta + a.count); // swapped to avoid bowties 
+                        ImU32 col = species_color(a, false);
+                        draw.AddQuad(pa, pb, pc, pd, col, 0.5f);
+                        draw.AddQuadFilled(pa, pb, pc, pd, col);
+                        counta += a.count;
+                        countb += b.count;
+                    }
+                }
+            }
+        }
+
+        // Background to all labels
+        //draw.AddRectFilled(tran(gencount - 1, 0) + float2(padding * 3, 0), pos + (float2)im::GetContentRegionAvail() + float2(padding, 0), ImColor(240, 240, 240));
+
+        struct Spec {
+            Species s;
+            int offset;
+        };
+        auto& species = generations.back().species;
+        std::vector<Spec> spec(species.size());
+        int offset = 0;
+        for (uint i = 0; i < spec.size(); i++) {
+            Species s = species[i];
+            spec[i] = { s, offset };
+            offset += s.count;
+        }
+        std::sort(spec.begin(), spec.end(), [](Spec a, Spec b) {return a.s.count > b.s.count; });
+        for (uint i = 0; i < spec.size() && i < uint(size.y / max_label.y); i++) {
+            Spec s = spec[i];
+            if ((float)s.s.count / (float)gensize * 2 < max_label.y / size.y)
+                break;
+            char buf[32];
+            snprintf(buf, sizeof(buf), "S%d%d:", s.s.n_nodes % 10, s.s.n_muscles % 10);
+            float2 p = tran(gencount - 1, s.offset + s.s.count / 2) + float2(padding * 3, -padding - max_label.y / 2.0f);
+            ImU32 col = species_color(s.s, false);
+            // Background to single label
+            //draw.AddRectFilled(p, p + max_label + padding * 2, ImColor(240, 240, 240));
+            draw.AddText(p + padding, col, buf);
+            snprintf(buf, sizeof(buf), "%d", s.s.count);
+            draw.AddText(p + padding + float2(max_label.x - im::CalcTextSize(buf).x, 0), col, buf);
+        }
+        im::End();
+    }
 }
 
 void draw_histogram() {
@@ -391,12 +502,26 @@ int main(int, char**) {
     if (!init())
         return false;
 
-    for (int i = 0; i < 3; i++) {
+    rand();
+    for (int i = 0; i < 4; i++) {
         Generation gen;
         gen.fit.resize(1000);
         for (int j = 0; j < 1000; j++) {
             gen.fit[j] = (j - 150) / 10.0f * log(i + 1);
         }
+        gen.species.resize(20);
+        for (int i = 0; i < gen.species.size(); i++) {
+            Species& s = gen.species[i];
+            s.n_nodes = i / 2 + 1;
+            s.n_muscles = i + 1;
+            //s.count = fabs(gauss()) * 10000;
+            s.count = rand();
+        }
+        int total = 0;
+        for (Species& s : gen.species)
+            total += s.count;
+        for (Species& s : gen.species)
+            s.count = s.count * 1000 / total;
         generations.push_back(std::move(gen));
     }
 
@@ -408,15 +533,7 @@ int main(int, char**) {
 
         im::ShowDemoWindow();
 
-        im::Begin("performance graph");
-        SetWindowFontScale(3);
-        Text("Generation %d", 1);
-        SetWindowFontScale(1);
-        draw_fitness();
-        im::End();
-
-        im::Begin("species graph");
-        im::End();
+        draw_fitness_and_species();
 
         im::Begin("control");
         static float scale = 2.0f / 0.015f;

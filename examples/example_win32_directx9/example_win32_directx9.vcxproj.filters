@@ -56,6 +56,7 @@
     <None Include="..\..\misc\natvis\imgui.natvis">
       <Filter>sources</Filter>
     </None>
+    <None Include="original.java" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="todo.txt" />

@@ -2,14 +2,14 @@
 creature generation and simulation functions done
 
 creature drawing
--distance/time display
+-distance/time hud
 other drawing functions
--species graph
--histogram
+-histogram (maybe colored by species)
 mutation
 genetic algorithm
-history slider / scroll and zoom
 paralleize
+persistence
+history slider / scroll and zoom
 
 next gen (heh):
 Based on NEAT
