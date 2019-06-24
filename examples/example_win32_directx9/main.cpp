@@ -3,21 +3,30 @@
 #include <math.h>
 #include <vector>
 
+#include <immintrin.h>
+
 #include "prolouge.h"
 
 namespace im = ImGui;
 
 typedef unsigned int uint;
+typedef uint32_t u32;
+
+#define MYRAND_MAX (u32(1 << 31) - 1)
+u32 myrand() {
+    static u32 state = 1;
+    return state = (state * 1103515245 + 12345) & MYRAND_MAX;
+}
 
 float random(float min, float max) {
-    return min + float(rand()) / float(RAND_MAX)*(max - min);
+    return min + float(myrand()) / float(MYRAND_MAX)*(max - min);
 }
 float random(float max) {
     return random(0, max);
 }
 
 int irandom(int min, int max) {
-    return min + rand() % (max - min + 1);
+    return min + rand() % (max - min);
 }
 int irandom(int max) {
     return irandom(0, max);
@@ -32,6 +41,13 @@ float gauss() {
         y = random(1),
         z = sqrtf(-2 * logf(x)) * cosf(2 * (float)M_PI * y);
     return z;
+}
+
+float r() {
+    float r = powf(random(-1, 1), 19);
+    if (isnan(r))
+        r = 0;
+    return r;
 }
 
 struct Node {
@@ -54,6 +70,10 @@ struct Guy {
     float heartbeat;
     float t_simulation = 0;
     float camera_x = 0;
+    float mutatibility = 1;
+    float fitness = 0;
+    float tested = false;
+    bool alive = true;
 };
 
 struct Species {
@@ -96,6 +116,8 @@ void tick_guy_physics(Guy& guy) {
         float2 ndiff = diff / len * (force * m.rigidity);
         a.vel += ndiff / a.mass_diameter;
         b.vel -= ndiff / b.mass_diameter;
+        assert(!isnan(a.vel.x));
+        assert(!isnan(b.vel.x));
     }
     for (Node& n : guy.nodes) {
         // Node physics
@@ -141,7 +163,7 @@ void move_until_stable(Guy& guy) {
     }
 }
 
-void add_random_muscle_from_to(Guy& guy, int node1, int node2) {
+void add_random_muscle_between(Guy& guy, int node1, int node2) {
     guy.muscles.resize(guy.muscles.size() + 1);
     Muscle& m = guy.muscles.back();
 
@@ -160,21 +182,23 @@ void add_random_muscle_from_to(Guy& guy, int node1, int node2) {
     m.length = int(m.contract_time / m.extend_time) ? m.contract_length : m.extend_length;
 }
 
-//void add_random_muscle(Guy& guy) {
-//
-//}
-
 void check_and_fix_guy(Guy& guy) {
     // Remove double muscles
     auto& mus = guy.muscles;
     for (uint i = 0; i < mus.size(); i++) {
         Muscle& a = mus[i];
+        assert(a.node1 < guy.nodes.size());
+        assert(a.node2 < guy.nodes.size());
+        if (a.node1 == a.node2) {
+            mus.erase(mus.begin() + i);
+            i -= 1;
+            continue;
+        }
         for (uint j = i + 1; j < mus.size(); j++) {
             Muscle& b = mus[j];
             if (
                 a.node1 == b.node1 && a.node2 == b.node2 ||
-                a.node1 == b.node2 && a.node2 == b.node1 ||
-                b.node1 == b.node2) {
+                a.node1 == b.node2 && a.node2 == b.node1) {
                 mus.erase(mus.begin() + j);
                 j -= 1;
             }
@@ -198,15 +222,18 @@ void check_and_fix_guy(Guy& guy) {
             do
                 to = irandom(0, guy.nodes.size());
             while (to == i || to == first_edge);
-            add_random_muscle_from_to(guy, i, to);
+            add_random_muscle_between(guy, i, to);
         }
+    }
+    for (Node& n : guy.nodes) {
+        n.pos = linalg::clamp(n.pos, float2(-3, 0), float2(3, 3));
     }
 }
 
 Guy gen_guy() {
     Guy guy;
-    int n_node = irandom(3, 6);
-    int n_muscle = irandom(n_node - 1, n_node * 3 - 6);
+    int n_node = irandom(3, 6 + 1);
+    int n_muscle = irandom(n_node - 1, n_node * 3 - 6 + 1);
 
     guy.nodes.resize(n_node);
     for (Node& n : guy.nodes) {
@@ -225,16 +252,167 @@ Guy gen_guy() {
         else {
             node1 = irandom(n_node);
             do
-                node2 = irandom(n_node - 1);
+                node2 = irandom(n_node);
             while (node2 == node1);
         }
-        add_random_muscle_from_to(guy, node1, node2);
+        add_random_muscle_between(guy, node1, node2);
     }
 
     guy.heartbeat = random(40, 80);
+
     check_and_fix_guy(guy);
     move_until_stable(guy);
     return std::move(guy);
+}
+
+Guy reproduce_guy(const Guy& guy) {
+    Guy g = guy; // copy
+    float cm = g.mutatibility * MUTABILITY_FACTOR;
+    static int cnt = 1;
+    // Modify nodes
+    for (Node& n : g.nodes) {
+        n.pos += float2(r() * 0.5f * cm, r() * 0.5f * cm);
+        n.mass_diameter = clamp(n.mass_diameter + r() * 0.1f * cm, MINIMUM_NODE_SIZE, MAXIMUM_NODE_SIZE);
+        n.friction_c = clamp(n.friction_c + r() * 0.1f * cm, MINIMUM_NODE_FRICTION, MAXIMUM_NODE_FRICTION);
+    }
+    // Modify muscles
+    for (Muscle& m : g.muscles) {
+        if (random(1) < 0.02f * cm)
+            m.node1 = irandom(g.nodes.size());
+        if (random(1) < 0.02f * cm)
+            m.node2 = irandom(g.nodes.size());
+        m.rigidity = clamp(m.rigidity * (1 + r() * 0.9f * cm), 0.01f, 0.08f);
+        float contract_length = clamp(m.contract_length + r() * cm, 0.5f, 2);
+        float extend_length = clamp(m.extend_length + r() * cm, 0.5f, 2);
+        m.contract_length = fminf(contract_length, extend_length);
+        m.extend_length = fminf(fmaxf(contract_length, extend_length), m.contract_length * (1 + 0.025f * m.rigidity));
+        if (irandom(2) < 1)
+            m.contract_time = fmodf(m.contract_time + (m.contract_time - m.extend_time) * r() * cm, 1);
+        else
+            m.extend_time = fmodf(m.extend_time + (m.extend_time - m.contract_time) * r() * cm, 1);
+        m.period += r();
+        m.length = int(m.contract_time / m.extend_time) ? m.contract_length : m.extend_length;
+    }
+    // Remove random node
+    if (random(1) < 0.04f * cm) {
+        uint rm = irandom(g.nodes.size());
+        g.nodes.erase(g.nodes.begin() + rm);
+        for (uint i = 0; i < g.muscles.size(); i++) {
+            Muscle& m = g.muscles[i];
+            if (m.node1 == rm || m.node2 == rm) {
+                g.muscles.erase(g.muscles.begin() + i);
+                i -= 1;
+            }
+            else {
+                if (m.node1 > rm)
+                    m.node1 -= 1;
+                if (m.node2 > rm)
+                    m.node2 -= 1;
+            }
+        }
+    }
+    // Add random node
+    if (random(1) < 0.04f * cm || g.nodes.size() <= 2) {
+        Node n;
+        uint parent = irandom(g.nodes.size());
+        n.pos = g.nodes[parent].pos + linalg::rot(random(0, float(2 * M_PI)), float2(sqrtf(random(0, 1)), 0)); // random angle and distance
+        n.mass_diameter = random(MINIMUM_NODE_SIZE, MAXIMUM_NODE_SIZE);
+        n.friction_c = random(MINIMUM_NODE_FRICTION, MAXIMUM_NODE_FRICTION);
+        int closest = -1;
+        float min_dist = FLT_MAX;
+        for (uint i = 0; i < g.nodes.size(); i++) {
+            float dist = linalg::distance(n.pos, g.nodes[i].pos);
+            if (i != parent && dist < min_dist) {
+                closest = i;
+                min_dist = dist;
+            }
+        }
+        assert(closest != -1);
+        g.nodes.push_back(n);
+        add_random_muscle_between(g, parent, g.nodes.size() - 1);
+        add_random_muscle_between(g, closest, g.nodes.size() - 1);
+    }
+    // Add random muscle
+    if (random(1) < 0.04f * cm)
+        add_random_muscle_between(g, irandom(g.nodes.size()), irandom(g.nodes.size()));
+    // Remove random muscle
+    if (random(1) < 0.04f * cm)
+        g.muscles.erase(g.muscles.begin() + irandom(g.muscles.size()));
+
+    g.heartbeat += r() * 16 * cm;
+    g.mutatibility = fminf(cm * random(0.8f, 1.25f), 2);
+
+    check_and_fix_guy(g);
+    //move_until_stable(g);
+    return std::move(g);
+}
+
+Generation do_generation(std::vector<Guy>& pop) {
+    Generation gen;
+
+    // Evaluate (skip survivors from previous generation)
+    for (Guy& guy : pop) {
+        if (guy.fitness == 0) {
+            Guy eval = guy;
+            for (int i = 0; i < 15 * 60; i++)
+                tick_guy(eval);
+            float avg = 0;
+            for (Node& n : eval.nodes)
+                avg += n.pos.x / (float)eval.nodes.size();
+            guy.fitness = avg;
+        }
+    }
+
+    std::sort(pop.begin(), pop.end(), [](const Guy& a, const Guy& b) {return a.fitness < b.fitness; });
+
+    // Fill in gen
+    gen.fit.reserve(pop.size());
+    gen.species.reserve(pop.size());
+    for (Guy& g : pop) {
+        gen.fit.push_back(g.fitness);
+        gen.species.push_back({ (int)g.nodes.size(), (int)g.muscles.size(), 0 });
+    }
+    gen.best = pop.back();
+    gen.avg = pop[pop.size() / 2];
+    gen.worst = pop.front();
+
+    {
+        std::sort(gen.species.begin(), gen.species.end(), cmp_species);
+        int j = 0;
+        for (uint i = 0; i < gen.species.size(); i++) {
+            Species &a = gen.species[j], b = gen.species[i];
+            if (a.n_nodes == b.n_nodes && a.n_muscles == b.n_muscles)
+                a.count += 1;
+            else {
+                j += 1;
+                gen.species[j] = { b.n_nodes, b.n_muscles, 1 };
+            }
+        }
+        gen.species.resize(j + 1);
+    }
+
+    // Kill half
+    for (uint i = 0; i < pop.size() / 2; i++) {
+        uint j1 = i, j2 = pop.size() - i - 1;
+        if (i / float(pop.size()) <= (powf(random(-1, 1), 3) + 1) / 2)
+            std::swap(j1, j2);
+        pop[j1].alive = true; // swapped because we sort worst to best
+        pop[j2].alive = false;
+    }
+    // Reproduce
+    for (uint i = 0, j = 0; i < pop.size(); i++) {
+        if (pop[i].alive) {
+            while (pop[j].alive)
+                j += 1;
+            pop[j] = reproduce_guy(pop[i]);
+            pop[j].alive = false; // avoid reproducing offspring
+            j += 1;
+        }
+    }
+    for (Guy& g : pop)
+        g.alive = true;
+
+    return std::move(gen);
 }
 
 void draw_guy(Guy& guy, float2 pos, float size, float scale) {
@@ -292,10 +470,6 @@ void draw_guy(Guy& guy, float2 pos, float size, float scale) {
     //im::DragFloat("cam x", &guy.camera_x);
 }
 
-void draw_fitness() {
-
-}
-
 ImU32 species_color(Species species, bool is_label) {
     int num = species.n_nodes * 10 + species.n_muscles;
     float col = fmodf(float(num) * 1.618034f, 1);
@@ -317,16 +491,16 @@ ImU32 species_color(Species species, bool is_label) {
     return ret;
 };
 
-void draw_species() {
-
-}
-
 void draw_fitness_and_species() {
     const int gencount = generations.size();
     const int gensize = gencount != 0 ? generations[0].fit.size() : 0;
-    auto& draw = *im::GetOverlayDrawList();
+    float padding = 5;
+    float label_scale = 1;
+
+    im::Begin("performance graph");
     float tickwidth = im::CalcTextSize(" 999 m").x;
-    float2 max_label = im::CalcTextSize("S99: 999 ");
+    im::SetWindowFontScale(label_scale);
+    float2 max_label = (float2)im::CalcTextSize("S99: 999");
 
     { // Draw fitness
         struct Line {
@@ -366,71 +540,81 @@ void draw_fitness_and_species() {
             {99, 1},
             {100},
         };
+        auto& draw = *im::GetWindowDrawList();
 
-        im::Begin("performance graph");
         im::SetWindowFontScale(3);
-        im::Text("Generation %d", 1);
+        im::Text("Generation %d", generations.size());
+        if (gencount != 0) {
+            char buf[32];
+            snprintf(buf, 32, "%.2f m", generations.back().fit.back());
+            im::SameLine(im::GetContentRegionAvailWidth() - max_label.x - im::CalcTextSize(buf).x);
+            im::Text(buf);
+        }
         im::SetWindowFontScale(1);
 
         float2 pos = im::GetCursorScreenPos(), size = im::GetContentRegionAvail();
 
-        if (gencount == 0)
-            return;
+        if (gencount != 0) {
+            size.x -= max_label.x + padding;
+            draw.AddRectFilled(pos, pos + size, ImColor(220, 220, 220));
+            size -= float2(tickwidth, 0) + padding * 2;
+            pos += float2(tickwidth, 0) + padding;
 
-        float padding = 5;
-        size.x -= max_label.x;
-        draw.AddRectFilled(pos, pos + size, ImColor(220, 220, 220));
-        size -= float2(tickwidth, 0) + padding * 2;
-        pos += float2(tickwidth, 0) + padding;
-
-        float min = FLT_MAX, max = -FLT_MAX;
-        for (Generation& g : generations) {
-            min = fminf(min, g.fit.front());
-            max = fmaxf(max, g.fit.back());
-        }
-        float range = max - min;
-
-        auto tran = [&](float2 p) {
-            return float2(p.x / (float)(gencount - 1), 1 - (p.y - min) / range) * size + pos;
-        };
-
-        static int max_ticks = 10;
-        float maxstep = range / (float)max_ticks;
-        float upstep = powf(10, ceilf(log10f(maxstep)));
-        float remstep = maxstep / upstep;
-        float step = (remstep < 0.2f ? 0.2f : (remstep < 0.5f ? 0.5f : 1)) * upstep;
-
-        for (
-            float y = ceilf(min / step) * step;
-            y <= floorf(max / step) * step;
-            y += step)
-        {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%d m", (int)y);
-            float2 ts = im::CalcTextSize(buf);
-
-            draw.AddLine(tran({ 0, y }), tran({ (float)gencount - 1, y }), ImColor(150, 150, 150), 2);
-            draw.AddText(tran({ 0, y }) - float2(ts.x + 5, ts.y / 2), ImColor(150, 150, 150), buf);
-        }
-
-        std::vector<ImVec2> line(gencount);
-        for (Line l : lines) {
-            for (int i = 0; i < gencount; i++) {
-                line[i] = tran({ (float)i, generations[i].fit[std::min(l.pos * gensize / 100, gensize - 1)] });
+            float min = FLT_MAX, max = -FLT_MAX;
+            for (Generation& g : generations) {
+                min = fminf(min, g.fit.front());
+                max = fmaxf(max, g.fit.back());
             }
-            draw.AddPolyline(&line.front(), line.size(), l.color, false, l.thickness);
+            float range = max - min;
+
+            auto tran = [&](float2 p) {
+                return float2(p.x / (float)(gencount - 1), 1 - (p.y - min) / range) * size + pos;
+            };
+
+            static int max_ticks = 10;
+            float maxstep = range / (float)max_ticks;
+            float upstep = powf(10, ceilf(log10f(maxstep)));
+            float remstep = maxstep / upstep;
+            float step = (remstep < 0.2f ? 0.2f : (remstep < 0.5f ? 0.5f : 1)) * upstep;
+
+            for (
+                float y = ceilf(min / step) * step;
+                y <= floorf(max / step) * step;
+                y += step)
+            {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%d m", (int)y);
+                float2 ts = im::CalcTextSize(buf);
+
+                draw.AddLine(tran({ 0, y }), tran({ (float)gencount - 1, y }), ImColor(150, 150, 150), 2);
+                draw.AddText(tran({ 0, y }) - float2(ts.x + 5, ts.y / 2), ImColor(150, 150, 150), buf);
+            }
+
+            std::vector<ImVec2> line(gencount);
+            for (Line l : lines) {
+                for (int i = 0; i < gencount; i++) {
+                    line[i] = tran({ (float)i, generations[i].fit[std::min(l.pos * gensize / 100, gensize - 1)] });
+                }
+                draw.AddPolyline(&line.front(), line.size(), l.color, false, l.thickness);
+            }
+            //im::DragInt("max_ticks", &max_ticks, 0.05f);
         }
-        //im::DragInt("max_ticks", &max_ticks, 0.05f);
         im::End();
     }
 
     { // Draw spcies
         im::Begin("species graph");
+        im::SetWindowFontScale(label_scale);
+        auto& draw = *im::GetWindowDrawList();
         float2 pos = im::GetCursorScreenPos(), size = im::GetContentRegionAvail();
 
-        float padding = 1.0f;
-        size.x -= tickwidth + max_label.x + padding * 4;
-        pos.x += tickwidth;
+        if (gencount < 2) {
+            im::End();
+            return;
+        }
+
+        size.x -= tickwidth + max_label.x + padding * 3;
+        pos.x += tickwidth + padding;
 
         auto tran = [&](int x, int y) -> float2 {
             return float2((float)x / (float)(gencount - 1), (float)y / (float)gensize) * size + pos;
@@ -442,7 +626,7 @@ void draw_fitness_and_species() {
 
             int counta = 0, countb = 0;
 
-            // @POLYNOMIC: add 'int index_in_next_gen' to Species and set it at append time
+            // @POLYNOMIC: use cmp_species and two indexes
             for (Species a : in_gen_a) {
                 for (Species b : in_gen_b) {
                     if (a.n_nodes == b.n_nodes &&
@@ -458,9 +642,12 @@ void draw_fitness_and_species() {
                 }
             }
         }
+        // Lines along the sides to avoid AA
+        draw.Flags &= ~ImDrawListFlags_AntiAliasedLines;
+        draw.AddRect(tran(0, 0) - 1, tran(gencount - 1, gensize) + 1, ImColor(0, 0, 0), 0, 0, 2);
 
         // Background to all labels
-        //draw.AddRectFilled(tran(gencount - 1, 0) + float2(padding * 3, 0), pos + (float2)im::GetContentRegionAvail() + float2(padding, 0), ImColor(240, 240, 240));
+        draw.AddRectFilled(tran(gencount - 1, 0) + float2(padding, 0), tran(gencount - 1, gensize) + float2(max_label.x + padding * 3, 0), ImColor(0, 0, 0));
 
         struct Spec {
             Species s;
@@ -481,14 +668,16 @@ void draw_fitness_and_species() {
                 break;
             char buf[32];
             snprintf(buf, sizeof(buf), "S%d%d:", s.s.n_nodes % 10, s.s.n_muscles % 10);
-            float2 p = tran(gencount - 1, s.offset + s.s.count / 2) + float2(padding * 3, -padding - max_label.y / 2.0f);
+            float2 p = tran(gencount - 1, s.offset + s.s.count / 2) + float2(padding * 2, -max_label.y / 2.0f);
             ImU32 col = species_color(s.s, false);
             // Background to single label
             //draw.AddRectFilled(p, p + max_label + padding * 2, ImColor(240, 240, 240));
-            draw.AddText(p + padding, col, buf);
+            draw.AddText(p, col, buf);
             snprintf(buf, sizeof(buf), "%d", s.s.count);
-            draw.AddText(p + padding + float2(max_label.x - im::CalcTextSize(buf).x, 0), col, buf);
+            draw.AddText(p + float2(max_label.x - im::CalcTextSize(buf).x, 0), col, buf);
         }
+        draw.Flags |= ImDrawListFlags_AntiAliasedLines;
+
         im::End();
     }
 }
@@ -502,51 +691,74 @@ int main(int, char**) {
     if (!init())
         return false;
 
+    std::vector<Guy> population(100);
+    for (Guy& g : population)
+        g = gen_guy();
+
     rand();
-    for (int i = 0; i < 4; i++) {
-        Generation gen;
-        gen.fit.resize(1000);
-        for (int j = 0; j < 1000; j++) {
-            gen.fit[j] = (j - 150) / 10.0f * log(i + 1);
-        }
-        gen.species.resize(20);
-        for (int i = 0; i < gen.species.size(); i++) {
-            Species& s = gen.species[i];
-            s.n_nodes = i / 2 + 1;
-            s.n_muscles = i + 1;
-            //s.count = fabs(gauss()) * 10000;
-            s.count = rand();
-        }
-        int total = 0;
-        for (Species& s : gen.species)
-            total += s.count;
-        for (Species& s : gen.species)
-            s.count = s.count * 1000 / total;
-        generations.push_back(std::move(gen));
-    }
+    //for (int i = 0; i < 4; i++) {
+    //    Generation gen;
+    //    gen.fit.resize(1000);
+    //    for (int j = 0; j < 1000; j++) {
+    //        gen.fit[j] = (j - 150) / 10.0f * log(i + 1);
+    //    }
+    //    gen.species.resize(10);
+    //    for (int j = 0; j < gen.species.size(); j++) {
+    //        Species& s = gen.species[j];
+    //        s.n_nodes = j / 2 + 1;
+    //        s.n_muscles = j + 1;
+    //        //s.count = fabs(gauss()) * 10000;
+    //        s.count = rand();
+    //    }
+    //    int total = 0;
+    //    for (Species& s : gen.species)
+    //        total += s.count;
+    //    for (Species& s : gen.species)
+    //        s.count = s.count * 1000 / total;
+    //    generations.push_back(std::move(gen));
+    //}
 
     while (start_frame()) {
         fullscreen_dockspace();
         ImGuiIO& io = im::GetIO();
 
-        using namespace ImGui;
 
         im::ShowDemoWindow();
 
-        draw_fitness_and_species();
-
         im::Begin("control");
-        static float scale = 2.0f / 0.015f;
-        srand(10);
-        static Guy test_guy = gen_guy();
-        tick_guy(test_guy);
-        draw_guy(test_guy,
-            GetCursorScreenPos(),
-            linalg::minelem((float2)GetContentRegionAvail()),
-            scale);
-        im::DragFloat("scale", &scale, 1);
+        //static float scale = 2.0f / 0.015f;
+        static float scale = 1.0f / 0.015f;
+
+        static bool alap = true;
+        im::Checkbox("Run", &alap);
+        if (alap)
+            generations.push_back(do_generation(population));
+
+
+        static Guy guy = gen_guy();
+        //tick_guy(guy);
+        //draw_guy(guy,
+        //    im::GetCursorScreenPos(),
+        //    linalg::minelem((float2)im::GetContentRegionAvail()),
+        //    scale);
+        im::DragFloat("scale", &scale, 1, 1e-3f, 1e3f);
+
+        if (generations.size() > 0) {
+            Generation& gen = generations.back();
+            float padding = 10;
+            float size = im::GetContentRegionAvailWidth() / 3 - padding;
+
+            draw_guy(gen.worst, (float2)im::GetCursorScreenPos() + padding, size - padding, scale);
+            im::Dummy((float2)size); im::SameLine();
+            draw_guy(gen.avg, (float2)im::GetCursorScreenPos() + padding, size - padding, scale);
+            im::Dummy((float2)size); im::SameLine();
+            draw_guy(gen.best, (float2)im::GetCursorScreenPos() + padding, size - padding, scale);
+            im::Dummy((float2)size);
+        }
 
         im::End();
+
+        draw_fitness_and_species();
 
         im::End();
 

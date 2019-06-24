@@ -5,8 +5,8 @@ creature drawing
 -distance/time hud
 other drawing functions
 -histogram (maybe colored by species)
-mutation
-genetic algorithm
+mutation - test
+genetic algorithm - test
 paralleize
 persistence
 history slider / scroll and zoom
@@ -16,3 +16,7 @@ Based on NEAT
 https://weightagnostic.github.io/
 https://arxiv.org/abs/1906.04358
 https://twitter.com/hardmaru/status/1138600152048910336
+
+errata:
+make the species labels a bit bigger (requires properly scaled font)
+get rid of default win 10 window decoration
