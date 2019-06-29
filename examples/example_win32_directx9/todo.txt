@@ -1,5 +1,5 @@
-
-creature generation and simulation functions done
+physics engine seems wonky:
+    import a good creature from carykh's version and make sure it performs the same
 
 creature drawing
 -distance/time hud
@@ -18,5 +18,5 @@ https://arxiv.org/abs/1906.04358
 https://twitter.com/hardmaru/status/1138600152048910336
 
 errata:
-make the species labels a bit bigger (requires properly scaled font)
+make the species labels a bit bigger (requires font baked to scale)
 get rid of default win 10 window decoration
