@@ -244,11 +244,12 @@ void shutdown() {
 
 void fullscreen_dockspace() {
     ImGuiIO& io = ImGui::GetIO();
+    ImGuiPlatformIO& plat = ImGui::GetPlatformIO();
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
     static bool start = true;
-    if (start) {
-        ImGui::GetPlatformIO().Platform_SetWindowPos(viewport, { io.DisplaySize.x / 2, io.DisplaySize.y / 2 });
+    if (start && plat.Monitors.size() > 0) {
+        ImGui::GetPlatformIO().Platform_SetWindowPos(viewport, ((float2)plat.Monitors[0].WorkSize - (float2)viewport->Size) / 2);
         start = false;
     }
 

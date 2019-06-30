@@ -3,7 +3,7 @@
 #include <math.h>
 #include <vector>
 
-#include <immintrin.h>
+//#include <immintrin.h>
 
 #include "prolouge.h"
 
@@ -32,7 +32,7 @@ u64 myrand() {
 
 
 float random(float min, float max) {
-    return min + float(myrand()) / float(MYRAND_MAX)*(max - min);
+    return min + float(myrand()) / float(MYRAND_MAX) * (max - min);
 }
 float random(float max) {
     return random(0, max);
@@ -75,8 +75,8 @@ struct Muscle {
     float period;
     float contract_time, contract_length, extend_time, extend_length;
     //float thru_period;
-    float length;
     float rigidity;
+    float length;
 };
 
 struct Guy {
@@ -136,8 +136,8 @@ void tick_guy_physics(Guy& guy) {
     for (Node& n : guy.nodes) {
         // Node physics
         n.vel *= AIR_FRICTION;
-        n.vel += GRAVITY;
         n.pos += n.vel;
+        n.vel += GRAVITY;
         // Collision with ground
         float dif = n.pos.y - n.mass_diameter / 2;
         if (dif < 0) {
@@ -295,7 +295,7 @@ Guy gen_guy() {
 Guy reproduce_guy(const Guy& guy) {
     Guy g = guy; // copy
     float cm = g.mutatibility * MUTABILITY_FACTOR;
-    static int cnt = 1;
+
     // Modify nodes
     for (Node& n : g.nodes) {
         n.pos += float2(r() * 0.5f * cm, r() * 0.5f * cm);
@@ -388,6 +388,8 @@ Generation do_generation(std::vector<Guy>& pop) {
             for (Node& n : eval.nodes)
                 avg += n.pos.x / (float)eval.nodes.size();
             guy.fitness = !isnan(avg) ? avg : 0; // kill creatures which break the physics engine
+            if (isnan(avg))
+                printf("killed a creature that broke physics\n");
         }
     }
 
@@ -408,7 +410,7 @@ Generation do_generation(std::vector<Guy>& pop) {
         std::sort(gen.species.begin(), gen.species.end(), cmp_species);
         int j = 0;
         for (uint i = 0; i < gen.species.size(); i++) {
-            Species &a = gen.species[j], b = gen.species[i];
+            Species& a = gen.species[j], b = gen.species[i];
             if (a.n_nodes == b.n_nodes && a.n_muscles == b.n_muscles)
                 a.count += 1;
             else {
@@ -434,27 +436,25 @@ Generation do_generation(std::vector<Guy>& pop) {
                 j += 1;
             pop[j] = reproduce_guy(pop[i]);
             pop[j].alive = false; // avoid reproducing offspring
-            pop[j].fitness = 0; // set fitness exactly to zero to actually test them
+            pop[j].fitness = 0; // set fitness to exactly zero to actually test them
             j += 1;
         }
     }
-    for (Guy& g : pop)
-        g.alive = true;
 
-    struct Shuff {
-        typedef u64 result_type;
-        static u64 min() {
-            return 0;
-        }
-        static u64 max() {
-            return u64(-1);
-        }
-        u64 operator()() {
-            return myrand();
-        }
-    };
+    //struct Shuff {
+    //    typedef u64 result_type;
+    //    static u64 min() {
+    //        return 0;
+    //    }
+    //    static u64 max() {
+    //        return u64(-1);
+    //    }
+    //    u64 operator()() {
+    //        return myrand();
+    //    }
+    //};
 
-    std::shuffle(pop.begin(), pop.end(), Shuff());
+    //std::shuffle(pop.begin(), pop.end(), Shuff());
 
     return std::move(gen);
 }
@@ -636,7 +636,7 @@ void draw_fitness_and_species() {
 
             std::vector<ImVec2> line(gencount);
             for (Line l : lines) {
-                for (int i = 0; i < gencount; i++) {
+                for (uint i = 0; i < gencount; i++) {
                     line[i] = tran({ (float)i, generations[i].fit[std::min(l.pos * gensize / 100, gensize - 1)] });
                 }
                 draw.AddPolyline(&line.front(), (u32)line.size(), l.color, false, l.thickness);
@@ -664,7 +664,7 @@ void draw_fitness_and_species() {
             return float2((float)x / (float)(gencount - 1), (float)y / (float)gensize) * size + pos;
         };
 
-        for (int i = 0; i < gencount - 1; i++) {
+        for (uint i = 0; i < gencount - 1; i++) {
             auto& in_gen_a = generations[i].species;
             auto& in_gen_b = generations[i + 1].species;
 
@@ -743,7 +743,6 @@ int main(int, char**) {
         fullscreen_dockspace();
         ImGuiIO& io = im::GetIO();
 
-
         im::ShowDemoWindow();
 
         im::Begin("control");
@@ -756,18 +755,9 @@ int main(int, char**) {
         if (im::IsItemHovered() && io.MouseDown[0])
             generations.push_back(do_generation(population));
 
-
-
-        static Guy guy = gen_guy();
-        //tick_guy(guy);
-        //draw_guy(guy,
-        //    im::GetCursorScreenPos(),
-        //    linalg::minelem((float2)im::GetContentRegionAvail()),
-        //    scale);
         im::DragFloat("scale", &scale, 1, 1e-3f, 1e3f);
 
-        if (generations.size() > 0) {
-            Generation& gen = generations.back();
+        {
             float padding = 10;
             float size = im::GetContentRegionAvailWidth() / 3 - padding;
 
@@ -795,10 +785,42 @@ int main(int, char**) {
                 draw_guy(orig == &guy ? moving : guy, pos + padding, size - padding, scale);
             };
 
-            disp(gen.worst);
-            disp(gen.avg);
-            disp(gen.best);
-            im::NewLine();
+            if (generations.size() > 0) {
+                Generation& gen = generations.back();
+                disp(gen.worst);
+                disp(gen.avg);
+                disp(gen.best);
+                im::NewLine();
+            }
+
+            //static Guy test_guy =
+            //{
+            //{
+            //{{-1.2771205913526096, 0.2}, {0, 0}, 0.4, 0.9987395638611504 },
+            //{ {0.7104520551452891, 0.37311390431341374}, {0, 0}, 0.4, 0.002691722172197796 },
+            //{ {0.5666685362073204, 0.9689604356078438}, {0, 0}, 0.4, 0.7207755487049553 },
+            //},
+            //{
+            //{1, 0, 2, 0.6096227824117451, 1.5885631837622134, 0.040637774846102204, 1.9950960515807818, 0.07997487392452732 },
+            //{0, 2, 2, 0.7124324318063029, 1.6021110173084439, 0.12814052284381194, 1.9977222228233822, 0.044909997630925756 },
+            //{1, 2, 2, 0.11441042382181354, 0.6129485715583076, 0.15803614914004793, 1.0161265448287211, 0.01019739892993485 },
+            //},
+            //7.500172332873125 };
+            //disp(test_guy);
+        }
+
+        {
+            auto& drw = *im::GetWindowDrawList();
+            float2 cur = im::GetCursorScreenPos();
+            float size = im::GetContentRegionAvailWidth() / 100;
+            for (int i = 0; i < 10; i++) {
+                float2 line = cur;
+                for (int j = 0; j < 100; j++) {
+                    drw.AddRectFilled(line, line + size, population[i * 100 + j].alive ? ImColor(0, 255, 0) : ImColor(255, 0, 0));
+                    line.x += size;
+                }
+                cur.y += size;
+            }
         }
 
         im::End();
@@ -809,7 +831,7 @@ int main(int, char**) {
 
         end_frame();
     }
-
+        
     shutdown();
     return 0;
 }
