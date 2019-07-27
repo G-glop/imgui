@@ -2,6 +2,7 @@
 #define _USE_MATH_DEFINES 
 #include <math.h>
 #include <vector>
+#include <time.h>
 
 //#include <immintrin.h>
 
@@ -21,13 +22,13 @@ typedef size_t uint;
 //    return state = (state * 1103515245 + 12345) & MYRAND_MAX;
 //}
 
-#define MYRAND_MAX (u64(-1))
-u64 myrand() {
-    static u64 state = 12904;
-    state ^= state >> 12; // a
-    state ^= state << 25; // b
-    state ^= state >> 27; // c
-    return state * UINT64_C(0x2545F4914F6CDD1D);
+#define MYRAND_MAX (u32(-1))
+u64 myrand_state = time(NULL);
+u32 myrand() {
+    myrand_state ^= myrand_state >> 12; // a
+    myrand_state ^= myrand_state << 25; // b
+    myrand_state ^= myrand_state >> 27; // c
+    return (myrand_state * UINT64_C(0x2545F4914F6CDD1D)) >> 32;
 }
 
 
@@ -88,6 +89,7 @@ struct Guy {
     float mutatibility = 1;
     float fitness = 0;
     bool alive = true;
+    int generation = 1;
 };
 
 struct Species {
@@ -367,11 +369,21 @@ Guy reproduce_guy(const Guy& guy) {
         g.muscles.erase(g.muscles.begin() + irandom(g.muscles.size()));
 
     g.heartbeat += r() * 16 * cm;
-    g.mutatibility = fminf(cm * random(0.8f, 1.25f), 2);
+    g.mutatibility = fminf(g.mutatibility * random(0.8f, 1.25f), 2);
     g.fitness = 0;
+    g.t_simulation = 0;
+    g.generation += 1;
 
     check_and_fix_guy(g);
-    move_until_stable(g);
+    //move_until_stable(g);
+    //tick_guy_physics(g);
+    float avg = 0;
+    for (Node& n : g.nodes)
+        avg += n.pos.x / (float)g.nodes.size();
+    for (Node& n : g.nodes) {
+        n.pos.x -= avg;
+        n.vel = { 0, 0 };
+    }
     return std::move(g);
 }
 
@@ -379,8 +391,10 @@ Generation do_generation(std::vector<Guy>& pop) {
     Generation gen;
 
     // Evaluate (skip survivors from previous generation)
-    for (Guy& guy : pop) {
-        if (guy.fitness == 0) {
+#pragma omp parallel for
+    for (int j = 0; j < pop.size(); j++) {
+        Guy& guy = pop[j];
+        if (guy.fitness == 0 || true) {
             Guy eval = guy;
             for (int i = 0; i < 15 * 60; i++)
                 tick_guy(eval);
@@ -421,26 +435,6 @@ Generation do_generation(std::vector<Guy>& pop) {
         gen.species.resize(j + 1);
     }
 
-    // Kill half
-    for (uint i = 0; i < pop.size() / 2; i++) {
-        uint j1 = i, j2 = pop.size() - i - 1;
-        if (i / float(pop.size()) <= (powf(random(-1, 1), 3) + 1) / 2)
-            std::swap(j1, j2);
-        pop[j1].alive = true;
-        pop[j2].alive = false;
-    }
-    // Reproduce
-    for (uint i = 0, j = 0; i < pop.size(); i++) {
-        if (pop[i].alive) {
-            while (pop[j].alive)
-                j += 1;
-            pop[j] = reproduce_guy(pop[i]);
-            pop[j].alive = false; // avoid reproducing offspring
-            pop[j].fitness = 0; // set fitness to exactly zero to actually test them
-            j += 1;
-        }
-    }
-
     //struct Shuff {
     //    typedef u64 result_type;
     //    static u64 min() {
@@ -453,8 +447,35 @@ Generation do_generation(std::vector<Guy>& pop) {
     //        return myrand();
     //    }
     //};
-
     //std::shuffle(pop.begin(), pop.end(), Shuff());
+
+    // Kill half
+    for (uint i = 0; i < pop.size() / 2; i++) {
+        uint j1 = i, j2 = pop.size() - 1 - i;
+        if (i / float(pop.size()) <= (powf(random(-1, 1), 3) + 1) / 2)
+            std::swap(j1, j2);
+        Guy& alive = pop[j1], &dead = pop[j2];
+        alive.alive = true;
+        dead = reproduce_guy(alive);
+        dead.alive = false;
+        dead.fitness = 0;
+    }
+
+    //for (int i = 0; i < pop.size(); i++) {
+    //    pop[i].alive = i / (pop.size() / 2);
+    //}
+
+    // Reproduce
+    //for (uint i = 0, j = 0; i < pop.size(); i++) {
+    //    if (pop[i].alive) {
+    //        while (pop[j].alive)
+    //            j += 1;
+    //        pop[j] = reproduce_guy(pop[i]);
+    //        pop[j].alive = false; // avoid reproducing offspring
+    //        pop[j].fitness = 0; // set fitness to exactly zero to actually test them
+    //        j += 1;
+    //    }
+    //}
 
     return std::move(gen);
 }
@@ -735,6 +756,8 @@ int main(int, char**) {
     if (!init())
         return false;
 
+    printf("starting with state: %016llX\n", myrand_state);
+
     std::vector<Guy> population(1000);
     for (Guy& g : population)
         g = gen_guy();
@@ -751,8 +774,7 @@ int main(int, char**) {
 
         //generations.push_back(do_generation(population));
 
-        im::Button("Run");
-        if (im::IsItemHovered() && io.MouseDown[0])
+        if (im::IsKeyDown(im::GetKeyIndex(ImGuiKey_Space)))
             generations.push_back(do_generation(population));
 
         im::DragFloat("scale", &scale, 1, 1e-3f, 1e3f);
@@ -769,9 +791,9 @@ int main(int, char**) {
                 im::Dummy((float2)size); im::SameLine();
 
                 if (im::IsItemHovered()) {
-                    if (!orig) {
-                        moving = guy;
+                    if (orig != &guy) {
                         orig = &guy;
+                        moving = guy;
                     }
                     if (orig == &guy) {
                         if (io.MouseDown[0])
@@ -810,16 +832,18 @@ int main(int, char**) {
         }
 
         {
+            static int perline = 35;
             auto& drw = *im::GetWindowDrawList();
             float2 cur = im::GetCursorScreenPos();
-            float size = im::GetContentRegionAvailWidth() / 100;
-            for (int i = 0; i < 10; i++) {
-                float2 line = cur;
-                for (int j = 0; j < 100; j++) {
-                    drw.AddRectFilled(line, line + size, population[i * 100 + j].alive ? ImColor(0, 255, 0) : ImColor(255, 0, 0));
-                    line.x += size;
-                }
-                cur.y += size;
+            float size = im::GetContentRegionAvailWidth() / perline;
+            for (int i = 0; i < population.size(); i++) {
+                float2 pos = { cur.x + i % perline * size, cur.y + i / perline * size };
+                Guy& g = population[i];
+                drw.AddRectFilled(pos, pos + size, g.alive ? ImColor(0, 255, 0) : ImColor(255, 0, 0));
+                char buf[32];
+                snprintf(buf, 32, "%zd", g.generation / ((generations.size() + 100) /  100));
+                drw.AddText(pos + float2((size - im::CalcTextSize(buf).x) / 2, 0), ImColor(255, 255, 255), buf);
+                pos.x += size;
             }
         }
 
@@ -831,7 +855,7 @@ int main(int, char**) {
 
         end_frame();
     }
-        
+
     shutdown();
     return 0;
 }
